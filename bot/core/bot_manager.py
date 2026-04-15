@@ -9,7 +9,9 @@ from handlers.commands import help_command, status_command
 from handlers.menu_handlers import (
     start_command,
     handle_main_menu,
-    handle_menu_callback
+    handle_menu_callback,
+    handle_data_section,
+    handle_tasks_section
 )
 from handlers.device_handlers import (
     devices_list_command,  # ИЗМЕНЕНО: devices_command -> devices_list_command
@@ -99,7 +101,9 @@ class BotManager:
         # Главное меню
         self.application.add_handler(CommandHandler("start", start_command))
     
-        # Обработчик главной кнопки "Настройки"
+        # Обработчики кнопок главного меню
+        self.application.add_handler(MessageHandler(filters.Text(["📊 Данные"]), handle_data_section))
+        self.application.add_handler(MessageHandler(filters.Text(["📝 Задачи"]), handle_tasks_section))
         self.application.add_handler(MessageHandler(filters.Text(["⚙️ Настройки"]), handle_main_menu))
     
         # Callback обработчики для inline меню

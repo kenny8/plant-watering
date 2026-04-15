@@ -1,1 +1,45 @@
-Nothing should be ignored based on the provided file changes. The only file added is README.md, which is a source/config file and should not be ignored.
+```
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Compiled and build artifacts
+*.o
+*.obj
+*.out
+*.so
+*.dll
+*.dylib
+*.a
+*.lib
+
+# Dependencies
+venv/
+.venv/
+.env
+.env.local
+*.env.*
+
+# Logs and temporary files
+*.log
+*.tmp
+*.swp
+*.swo
+
+# Coverage reports
+.coverage
+coverage/
+htmlcov/
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# System files
+.DS_Store
+Thumbs.db
+```
