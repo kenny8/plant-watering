@@ -157,8 +157,10 @@ Web Browser → Nginx → Frontend Static → Backend API → Database
 | `help_command` | message | Update, Context | Формирование текста справки | Текст с командами | Нет |
 | `status_command` | message | Update, Context | Проверка статуса | "✅ Бот работает" | Нет |
 | `handlers/menu_handlers.py` | | | | | |
-| `start_command` | message | Update, Context | Приветствие + ReplyKeyboard | Текст + кнопка "⚙️ Настройки" | Нет |
+| `start_command` | message | Update, Context | Приветствие + ReplyKeyboard | Текст + главное меню (📊 Данные, 📝 Задачи, ⚙️ Настройки) | Нет |
 | `handle_main_menu` | message (filter) | Text="⚙️ Настройки" | Показ inline меню настроек | InlineKeyboard: Уведомления, Устройства | Нет |
+| `handle_data_section` | message (filter) | Text="📊 Данные" | Показ заглушки раздела данных | Текст: "Раздел данных: здесь будет агрегироваться история показаний датчиков, статусы устройств и аналитика. Функционал в разработке." + главное меню | Нет |
+| `handle_tasks_section` | message (filter) | Text="📝 Задачи" | Показ заглушки раздела задач | Текст: "Раздел задач: здесь появится управление расписанием, автоматические сценарии и журнал действий. Функционал в разработке." + главное меню | Нет |
 | `handle_menu_callback` | callback_query | pattern: `^menu_`, `^enable_`, `^disable_`, `^devices_` | Навигация по меню настроек | Edit message с новым контентом | NotificationService (БД) |
 | `handlers/device_handlers.py` | | | | | |
 | `devices_list_command` | command/callback | Update, Context | Получение списка устройств | Список устройств с кнопками | DeviceService → БД |
@@ -173,9 +175,24 @@ Web Browser → Nginx → Frontend Static → Backend API → Database
 
 ### 2.4 Кнопки
 
+#### Главное меню (ReplyKeyboard)
+
 | Текст | Тип | Callback_data | Действие при нажатии | Изменяет состояние FSM? |
 |-------|-----|---------------|----------------------|-------------------------|
+| `📊 Данные` | Reply | N/A (text filter) | Показ заглушки раздела данных | Нет |
+| `📝 Задачи` | Reply | N/A (text filter) | Показ заглушки раздела задач | Нет |
 | `⚙️ Настройки` | Reply | N/A (text filter) | Показ меню настроек | Нет |
+
+**Раскладка главного меню:**
+```python
+[["📊 Данные", "📝 Задачи"],
+ ["⚙️ Настройки"]]
+```
+
+#### Inline-кнопки (меню настроек и устройства)
+
+| Текст | Тип | Callback_data | Действие при нажатии | Изменяет состояние FSM? |
+|-------|-----|---------------|----------------------|-------------------------|
 | `🔔 Уведомления` | Inline | `menu_notifications` | Переход в меню уведомлений | Нет |
 | `📱 Мои устройства` | Inline | `menu_devices` | Переход в меню устройств | Нет |
 | `✅ Включить уведомления` | Inline | `enable_notifications` | Включение уведомлений в БД | Нет |
