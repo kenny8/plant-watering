@@ -35,13 +35,21 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 async def handle_data_section(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработчик кнопки '📊 Данные'"""
     text = "Раздел данных: здесь будет агрегироваться история показаний датчиков, статусы устройств и аналитика. Функционал в разработке."
-    await update.message.reply_text(text)
+    await update.message.reply_text(
+        text,
+        reply_markup=reply_keyboard_main,
+        parse_mode='Markdown'
+    )
 
 
 async def handle_tasks_section(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработчик кнопки '📝 Задачи'"""
     text = "Раздел задач: здесь появится управление расписанием, автоматические сценарии и журнал действий. Функционал в разработке."
-    await update.message.reply_text(text)
+    await update.message.reply_text(
+        text,
+        reply_markup=reply_keyboard_main,
+        parse_mode='Markdown'
+    )
 
 async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработчик главного меню"""
