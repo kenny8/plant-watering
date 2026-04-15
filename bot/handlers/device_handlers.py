@@ -2,7 +2,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, CallbackQueryHandler, MessageHandler, filters
 import logging
 import asyncio
-from bot.services.device_service import DeviceService
+from services.device_service import DeviceService
 
 logger = logging.getLogger(__name__)
 

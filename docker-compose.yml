@@ -39,8 +39,8 @@ services:
 
   bot:
     build:
-      context: ./bot
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: bot/Dockerfile
     environment:
       - DATABASE_URL=mariadb+pymysql://user:m4Q8yrDETH@db:3306/plant_watering
       - LOG_LEVEL=DEBUG

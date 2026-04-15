@@ -14,8 +14,9 @@ from telegram.ext import (
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bot.core.database import Database
-from bot.handlers.menu_handlers import show_main_menu
+from core.database import Database
+from models.user_device import UserDevice
+from handlers.menu_handlers import show_main_menu
 
 # Константы пагинации
 DEVICES_PER_PAGE = 5
@@ -29,17 +30,15 @@ async def get_user_devices(
     
     Возвращает список кортежей: [(device_id, device_human_name), ...]
     """
-    # Запрос к таблице user_devices с присоединением devices для получения human_name
-    # Если device_human_name сохранён в user_devices, используем его, иначе берём из devices
+    # Запрос к таблице user_devices
     stmt = select(
-        Database.UserDevices.device_id,
-        Database.UserDevices.device_human_name
-    ).where(Database.UserDevices.user_id == user_id)
+        UserDevice.device_id,
+        UserDevice.device_human_name
+    ).where(UserDevice.user_id == user_id)
     
     result = await session.execute(stmt)
     devices = result.all()
     
-    # Если нужно получить актуальное имя из таблицы devices (fallback)
     if not devices:
         return []
     
