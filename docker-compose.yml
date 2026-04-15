@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  nginx:
+    image: nginx:latest
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./frontend/build:/usr/share/nginx/html:ro
+    depends_on:
+      - backend
+    networks:
+      - app-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=mariadb+pymysql://user:m4Q8yrDETH@db:3306/plant_watering
+      - JWT_SECRET=your_jwt_secret_key_here
+    depends_on:
+      - db
+    networks:
+      - app-network
+
+  db:
+    image: mariadb:10.6
+    environment:
+      - MYSQL_ROOT_PASSWORD=epQ74CBoie
+      - MYSQL_DATABASE=plant_watering
+      - MYSQL_USER=user
+      - MYSQL_PASSWORD=m4Q8yrDETH
+    volumes:
+      - db-data:/var/lib/mysql
+    networks:
+      - app-network
+
+  bot:
+    build:
+      context: ./bot
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=mariadb+pymysql://user:m4Q8yrDETH@db:3306/plant_watering
+      - LOG_LEVEL=DEBUG
+    depends_on:
+      - db
+    networks:
+      - app-network
+
+volumes:
+  db-data:
+
+networks:
+  app-network:
+    driver: bridge
