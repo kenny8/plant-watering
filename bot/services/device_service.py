@@ -1,7 +1,7 @@
 import logging
 from typing import List, Optional, Dict, Any
 from sqlalchemy import text
-from core.database import Database
+from bot.core.database import Database
 
 logger = logging.getLogger(__name__)
 

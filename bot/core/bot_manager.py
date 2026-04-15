@@ -5,16 +5,16 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler, MessageHandler, filters
 from .database import Database
 from .token_monitor import TokenMonitor
-from handlers.commands import help_command, status_command
-from handlers.menu_handlers import (
+from bot.handlers.commands import help_command, status_command
+from bot.handlers.menu_handlers import (
     start_command,
     handle_main_menu,
     handle_menu_callback,
     handle_data_section,
     handle_tasks_section
 )
-from handlers.data_handlers import register_data_handlers
-from handlers.device_handlers import (
+from bot.handlers.data_handlers import register_data_handlers
+from bot.handlers.device_handlers import (
     devices_list_command,  # ИЗМЕНЕНО: devices_command -> devices_list_command
     add_device_command, 
     remove_device_command, 
@@ -22,12 +22,12 @@ from handlers.device_handlers import (
     handle_device_id_input,  # ДОБАВЛЕНО: новый обработчик
     #device_data_command
 )
-from handlers.notification_handlers import (
+from bot.handlers.notification_handlers import (
     start_notifications_command, stop_notifications_command, test_notification_command
 )
-from services.device_service import DeviceService
-from services.user_settings_service import UserSettingsService
-from services.notification_service import NotificationService
+from bot.services.device_service import DeviceService
+from bot.services.user_settings_service import UserSettingsService
+from bot.services.notification_service import NotificationService
 
 logger = logging.getLogger(__name__)
 

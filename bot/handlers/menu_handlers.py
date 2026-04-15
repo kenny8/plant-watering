@@ -33,13 +33,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 async def handle_data_section(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Обработчик кнопки '📊 Данные'"""
-    text = "Раздел данных: здесь будет агрегироваться история показаний датчиков, статусы устройств и аналитика. Функционал в разработке."
-    await update.message.reply_text(
-        text,
-        reply_markup=reply_keyboard_main,
-        parse_mode='Markdown'
-    )
+    """Обработчик кнопки '📊 Данные' - делегирует в data_handlers"""
+    from handlers.data_handlers import handle_data_section as data_section_handler
+    await data_section_handler(update, context)
 
 
 async def handle_tasks_section(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
