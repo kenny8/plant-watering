@@ -4,9 +4,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Главная клавиатура (только Reply)
+# Главная клавиатура (только Reply) - новая раскладка
 reply_keyboard_main = ReplyKeyboardMarkup(
-    [["⚙️ Настройки"]],
+    [["📊 Данные", "📝 Задачи"],
+     ["⚙️ Настройки"]],
     resize_keyboard=True,
     input_field_placeholder="Выберите действие..."
 )
@@ -21,7 +22,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 • 🔔 Получать уведомления о состоянии растений
 • ⚙️ Управлять настройками мониторинга
 
-Для начала работы нажмите **«⚙️ Настройки»** на клавиатуре ниже 👇
+Выберите раздел в меню ниже 👇
     """
     
     await update.message.reply_text(
@@ -29,6 +30,18 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         reply_markup=reply_keyboard_main,
         parse_mode='Markdown'
     )
+
+
+async def handle_data_section(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик кнопки '📊 Данные'"""
+    text = "Раздел данных: здесь будет агрегироваться история показаний датчиков, статусы устройств и аналитика. Функционал в разработке."
+    await update.message.reply_text(text)
+
+
+async def handle_tasks_section(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик кнопки '📝 Задачи'"""
+    text = "Раздел задач: здесь появится управление расписанием, автоматические сценарии и журнал действий. Функционал в разработке."
+    await update.message.reply_text(text)
 
 async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработчик главного меню"""
