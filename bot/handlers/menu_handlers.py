@@ -261,7 +261,46 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             except Exception as e:
                 logger.error(f"Error in device menu callback: {e}")
                 await query.edit_message_text("❌ Ошибка при обработке запроса")
+        
+        elif callback_data == "data_back_menu":
+            # Возврат в главное меню из раздела данных
+            await query.edit_message_text(
+                text="🏠 **Главное меню**\n\nВыберите раздел:",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton(text="📊 Данные", callback_data="dummy_data"),
+                    InlineKeyboardButton(text="📝 Задачи", callback_data="dummy_tasks")
+                ], [
+                    InlineKeyboardButton(text="⚙️ Настройки", callback_data="menu_back_settings")
+                ]]),
+                parse_mode='Markdown'
+            )
             
     except Exception as e:
         logger.error(f"Error in handle_menu_callback: {e}")
         await query.edit_message_text("❌ Произошла ошибка при обработке запроса")
+
+
+async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, from_callback: bool = False) -> None:
+    """
+    Возврат в главное меню с Reply-клавиатурой.
+    
+    Args:
+        update: Объект обновления
+        context: Контекст бота
+        from_callback: Если True, это вызов из callback (редактируем сообщение), 
+                       иначе это обычное сообщение
+    """
+    if from_callback:
+        query = update.callback_query
+        # Отправляем новое сообщение с Reply-клавиатурой и удаляем inline-сообщение
+        await query.edit_message_text(
+            text="🏠 **Главное меню**\n\nВыберите раздел:",
+            reply_markup=reply_keyboard_main,
+            parse_mode='Markdown'
+        )
+    else:
+        await update.message.reply_text(
+            text="🏠 **Главное меню**\n\nВыберите раздел:",
+            reply_markup=reply_keyboard_main,
+            parse_mode='Markdown'
+        )
