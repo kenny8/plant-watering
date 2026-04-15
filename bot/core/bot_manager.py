@@ -10,10 +10,12 @@ from handlers.menu_handlers import (
     start_command,
     handle_main_menu,
     handle_menu_callback,
-    handle_data_section,
     handle_tasks_section
 )
-from handlers.data_handlers import register_data_handlers
+from handlers.data_handlers import (
+    register_data_handlers,
+    handle_data_section
+)
 from handlers.device_handlers import (
     devices_list_command,  # ИЗМЕНЕНО: devices_command -> devices_list_command
     add_device_command, 
@@ -204,7 +206,8 @@ class BotManager:
             # Создаем экземпляр NotificationService
             notification_service = NotificationService(user_settings_service)
             
-            # Сохраняем сервисы в bot_data для доступа из обработчиков
+            # Сохраняем сервисы и БД в bot_data для доступа из обработчиков
+            self.application.bot_data['db'] = self.database
             self.application.bot_data['database'] = self.database
             self.application.bot_data['device_service'] = device_service
             self.application.bot_data['user_settings_service'] = user_settings_service
