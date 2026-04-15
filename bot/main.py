@@ -2,7 +2,7 @@ import asyncio
 import signal
 from utils.config import Config
 from utils.logger import setup_logger
-from bot.core.bot_manager import BotManager
+from core.bot_manager import BotManager
 
 # Настраиваем логгер с DEBUG уровнем
 logger = setup_logger(__name__, "DEBUG")
