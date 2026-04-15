@@ -14,7 +14,7 @@ from telegram.ext import (
 from sqlalchemy import select, text
 
 from core.database import Database
-from handlers.menu_handlers import show_main_menu
+
 
 # Константы пагинации
 DEVICES_PER_PAGE = 5
@@ -112,12 +112,6 @@ def build_devices_keyboard(
         
         keyboard.append(nav_row)
     
-    # Кнопка "Назад в меню"
-    keyboard.append([InlineKeyboardButton(
-        text="🔙 Назад в меню",
-        callback_data="data_back_menu"
-    )])
-    
     return InlineKeyboardMarkup(keyboard), total_pages
 
 
@@ -142,16 +136,8 @@ async def handle_data_section(
     
     if not devices:
         # У пользователя нет устройств
-        keyboard = InlineKeyboardMarkup([[
-            InlineKeyboardButton(
-                text="🔙 Назад в меню",
-                callback_data="data_back_menu"
-            )
-        ]])
-        
         await update.message.reply_text(
             description_text + "\n\n⚠️ _У вас пока нет подключённых устройств._",
-            reply_markup=keyboard,
             parse_mode='Markdown'
         )
         return
@@ -192,9 +178,6 @@ async def handle_data_pagination(
     if not devices:
         await query.edit_message_text(
             text="⚠️ _У вас пока нет подключённых устройств._",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton(text="🔙 Назад в меню", callback_data="data_back_menu")
-            ]]),
             parse_mode='Markdown'
         )
         return
@@ -244,8 +227,7 @@ async def handle_device_select(
             "_Функционал в разработке._"
         ),
         reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton(text="🔙 Назад к списку", callback_data="data_list_p0"),
-            InlineKeyboardButton(text="🏠 В главное меню", callback_data="data_back_menu")
+            InlineKeyboardButton(text="🔙 К списку устройств", callback_data="data_list_p0")
         ]]),
         parse_mode='Markdown'
     )
@@ -256,12 +238,9 @@ async def handle_data_back_menu(
 ) -> None:
     """
     Возврат в главное меню из раздела данных.
+    Удалено: функционал возврата в главное меню не предусмотрен.
     """
-    query = update.callback_query
-    await query.answer()
-    
-    # Используем существующую функцию возврата в меню
-    await show_main_menu(update, context, from_callback=True)
+    pass
 
 
 def register_data_handlers(application) -> None:
@@ -281,9 +260,4 @@ def register_data_handlers(application) -> None:
     # Обработчик выбора устройства
     application.add_handler(
         CallbackQueryHandler(handle_device_select, pattern=r"^data_device_\d+$")
-    )
-    
-    # Обработчик возврата в меню
-    application.add_handler(
-        CallbackQueryHandler(handle_data_back_menu, pattern="^data_back_menu$")
     )
