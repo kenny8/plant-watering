@@ -14,8 +14,8 @@ from telegram.ext import (
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.database import Database
-from handlers.menu_handlers import show_main_menu
+from bot.core.database import Database
+from bot.handlers.menu_handlers import show_main_menu
 
 # Константы пагинации
 DEVICES_PER_PAGE = 5
