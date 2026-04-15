@@ -11,38 +11,36 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, text
 
 from core.database import Database
-from models.user_device import UserDevice
 from handlers.menu_handlers import show_main_menu
 
 # Константы пагинации
 DEVICES_PER_PAGE = 5
 
 
-async def get_user_devices(
-    session: AsyncSession, user_id: int
-) -> list[tuple[int, str]]:
+def get_user_devices(database: Database, user_id: int) -> list[tuple[int, str]]:
     """
     Получает список устройств пользователя из БД.
     
     Возвращает список кортежей: [(device_id, device_human_name), ...]
     """
-    # Запрос к таблице user_devices
-    stmt = select(
-        UserDevice.device_id,
-        UserDevice.device_human_name
-    ).where(UserDevice.user_id == user_id)
-    
-    result = await session.execute(stmt)
-    devices = result.all()
-    
-    if not devices:
+    try:
+        with database.engine.connect() as conn:
+            result = conn.execute(
+                text("""
+                    SELECT device_id, device_human_name 
+                    FROM user_devices 
+                    WHERE user_id = :user_id
+                """),
+                {"user_id": user_id}
+            )
+            rows = result.fetchall()
+            return [(row[0], row[1]) for row in rows]
+    except Exception as e:
+        print(f"❌ Ошибка получения устройств: {e}")
         return []
-    
-    return [(row[0], row[1]) for row in devices]
 
 
 def build_devices_keyboard(
@@ -139,8 +137,8 @@ async def handle_data_section(
     )
     
     # Получаем устройства из БД
-    async with Database.get_session() as session:
-        devices = await get_user_devices(session, user_id)
+    db: Database = context.bot_data['db']
+    devices = get_user_devices(db, user_id)
     
     if not devices:
         # У пользователя нет устройств
@@ -188,8 +186,8 @@ async def handle_data_pagination(
         page = 0
     
     # Получаем устройства из БД
-    async with Database.get_session() as session:
-        devices = await get_user_devices(session, user_id)
+    db: Database = context.bot_data['db']
+    devices = get_user_devices(db, user_id)
     
     if not devices:
         await query.edit_message_text(
