@@ -16,6 +16,7 @@ import json
 
 from core.database import Database
 from utils.logger import setup_logger
+from utils.data_export import generate_excel_buffer, format_filename
 
 logger = setup_logger(__name__)
 
@@ -749,8 +750,11 @@ async def handle_field_select(
             message_text = base_text
             logger.debug(f"Текст помещается в лимит: {len(message_text)} символов")
 
-    # Формируем клавиатуру
+    # Формируем клавиатуру с кнопкой экспорта и навигацией
     keyboard = [
+        [
+            InlineKeyboardButton(text="📥 Скачать Excel", callback_data=f"data_export_{device_id}_{build_id}_{field_name_encoded}"),
+        ],
         [
             InlineKeyboardButton(text="🔙 Назад к датчикам", callback_data=f"data_fields_{device_id}_{build_id}_p0"),
             InlineKeyboardButton(text="🔙 Назад к устройствам", callback_data="data_list_p0")
@@ -766,6 +770,144 @@ async def handle_field_select(
         reply_markup=reply_markup,
         parse_mode='Markdown'
     )
+
+
+async def handle_data_export(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """
+    Обработчик экспорта данных в Excel.
+    callback_data: data_export_{device_id}_{build_id}_{field_name}
+    
+    Логика (Этап 4):
+    1. Отправляет НОВОЕ сообщение с Excel-файлом
+    2. Отправляет НОВОЕ текстовое сообщение с кнопками навигации
+    3. Редактирует ИСХОДНОЕ сообщение: убирает кнопки, добавляет "✅ Файл сформирован..."
+    """
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    user_id = query.from_user.id
+    
+    logger.info(f"[DATA_EXPORT] Получен callback: {data} от user_id={user_id}")
+    
+    # Парсим device_id, build_id и field_name из callback_data
+    # Формат: data_export_{device_id}_{build_id}_{field_name}
+    try:
+        parts = data.split('_', 3)
+        device_id = int(parts[2])
+        remaining = parts[3]
+        remaining_parts = remaining.split('_', 1)
+        build_id = int(remaining_parts[0])
+        field_name_encoded = remaining_parts[1] if len(remaining_parts) > 1 else ""
+        field_name = field_name_encoded.replace("_", " ")
+        logger.debug(f"Распарсены параметры: device_id={device_id}, build_id={build_id}, field_name='{field_name}'")
+    except (ValueError, IndexError) as e:
+        logger.error(f"Ошибка парсинга callback_data для экспорта: {e}")
+        await query.answer("⚠️ Ошибка: неверный формат данных", show_alert=True)
+        return
+    
+    db: Database = context.bot_data['db']
+    chat_id = query.message.chat_id
+    
+    # Проверяем принадлежность устройства пользователю
+    device_human_name = None
+    try:
+        with db.engine.connect() as conn:
+            result = conn.execute(
+                text("""
+                    SELECT device_human_name
+                    FROM user_devices
+                    WHERE user_id = :user_id AND device_id = :device_id AND build_id = :build_id
+                """),
+                {"user_id": user_id, "device_id": device_id, "build_id": build_id}
+            )
+            row = result.fetchone()
+            if row:
+                device_human_name = row[0]
+                logger.debug(f"Устройство найдено: human_name='{device_human_name}'")
+    except Exception as e:
+        logger.error(f"Ошибка получения информации об устройстве: {e}")
+    
+    if not device_human_name:
+        logger.warning(f"Устройство не найдено у пользователя {user_id}")
+        await query.answer("⚠️ Устройство не найдено", show_alert=True)
+        return
+    
+    # Генерируем Excel-файл
+    logger.info(f"[DATA_EXPORT] Генерация Excel-файла для field_name='{field_name}'")
+    try:
+        with db.engine.connect() as conn:
+            buffer = generate_excel_buffer(conn, device_id, build_id, field_name)
+    except Exception as e:
+        logger.error(f"[DATA_EXPORT] Ошибка генерации Excel: {e}")
+        await query.answer(f"⚠️ Ошибка создания файла: {e}", show_alert=True)
+        return
+    
+    # Формируем имя файла
+    filename = format_filename(field_name, device_id)
+    field_display = " ".join(word.capitalize() for word in field_name.split())
+    
+    # 1️⃣ Отправляем НОВОЕ сообщение с файлом
+    logger.info(f"[DATA_EXPORT] Отправка файла {filename} в чат {chat_id}")
+    try:
+        buffer.seek(0)
+        sent_doc = await context.bot.send_document(
+            chat_id=chat_id,
+            document=buffer,
+            filename=filename,
+            caption=f"📊 Экспорт: {field_display}\n\nФайл создан: {device_human_name}",
+            parse_mode='Markdown'
+        )
+        logger.info(f"[DATA_EXPORT] Файл успешно отправлен (message_id={sent_doc.message_id})")
+    except Exception as e:
+        logger.error(f"[DATA_EXPORT] Ошибка отправки файла: {e}")
+        await query.answer(f"⚠️ Ошибка отправки файла: {e}", show_alert=True)
+        return
+    
+    # 2️⃣ Отправляем НОВОЕ текстовое сообщение с кнопками навигации под файлом
+    logger.info(f"[DATA_EXPORT] Отправка сообщения с кнопками навигации")
+    nav_keyboard = [
+        [
+            InlineKeyboardButton(text="🔙 Назад к датчикам", callback_data=f"data_fields_{device_id}_{build_id}_p0"),
+            InlineKeyboardButton(text="🔙 Назад к устройствам", callback_data="data_list_p0")
+        ]
+    ]
+    nav_markup = InlineKeyboardMarkup(nav_keyboard)
+    
+    try:
+        nav_message = await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"📁 **{filename}**\n\nВыберите действие:",
+            reply_markup=nav_markup,
+            parse_mode='Markdown',
+            reply_to_message_id=sent_doc.message_id
+        )
+        logger.info(f"[DATA_EXPORT] Сообщение с кнопками отправлено (message_id={nav_message.message_id})")
+    except Exception as e:
+        logger.error(f"[DATA_EXPORT] Ошибка отправки сообщения с кнопками: {e}")
+    
+    # 3️⃣ Редактируем ИСХОДНОЕ сообщение: убираем кнопки, добавляем подтверждение
+    logger.info(f"[DATA_EXPORT] Редактирование исходного сообщения")
+    try:
+        # Получаем текущий текст исходного сообщения (без кнопок)
+        original_text = query.message.text
+        if original_text and len(original_text) > 4096:
+            # Если текст был обрезан, оставляем как есть
+            confirm_text = original_text + "\n\n✅ Файл сформирован и отправлен выше."
+        else:
+            confirm_text = original_text + "\n\n✅ Файл сформирован и отправлен выше."
+        
+        # Убираем все кнопки из исходного сообщения
+        await query.edit_message_text(
+            text=confirm_text[:4096],  # На случай если добавление текста превысило лимит
+            reply_markup=None  # Убираем кнопки
+        )
+        logger.info(f"[DATA_EXPORT] Исходное сообщение отредактировано")
+    except Exception as e:
+        logger.error(f"[DATA_EXPORT] Ошибка редактирования исходного сообщения: {e}")
+        # Игнорируем ошибку редактирования - файл уже отправлен
 
 
 async def handle_data_back_menu(
@@ -805,4 +947,9 @@ def register_data_handlers(application) -> None:
     # Обработчик выбора поля - callback_data: data_field_{device_id}_{build_id}_{field_name}
     application.add_handler(
         CallbackQueryHandler(handle_field_select, pattern=r"^data_field_\d+_\d+_.+$")
+    )
+    
+    # Обработчик экспорта в Excel - callback_data: data_export_{device_id}_{build_id}_{field_name}
+    application.add_handler(
+        CallbackQueryHandler(handle_data_export, pattern=r"^data_export_\d+_\d+_.+$")
     )
