@@ -278,37 +278,33 @@ async def device_get_endpoint(machine_name: str, device_id: int, db: Session = D
                         }.encode('utf-8')
                         
                         req = urllib.request.Request(send_url, data=payload, headers={'Content-Type': 'application/json'})
-                        try:
-                            with urllib.request.urlopen(req, timeout=5) as response:
-                                resp_data = json.loads(response.read().decode('utf-8'))
-                                message_id = resp_data.get('result', {}).get('message_id')
-                                print(f"Уведомление отправлено пользователю {notify_data['user_id']} о команде {notify_data['command']}={notify_data['value']}, message_id={message_id}")
-                                
-                                # Обновляем callback_data кнопки с message_id
-                                if message_id:
-                                    edit_keyboard = [[{"text": "🗑️ Удалить", "callback_data": f"del_notify_{message_id}"}]]
-                                    edit_url = f"https://api.telegram.org/bot{bot_token}/editMessageReplyMarkup"
-                                    edit_payload = {
-                                        "chat_id": notify_data["chat_id"],
-                                        "message_id": message_id,
-                                        "reply_markup": {"inline_keyboard": edit_keyboard}
-                                    }.encode('utf-8')
-                                    edit_req = urllib.request.Request(edit_url, data=edit_payload, headers={'Content-Type': 'application/json'})
-                                    try:
-                                        with urllib.request.urlopen(edit_req, timeout=5) as edit_response:
-                                            print(f"Обновлена клавиатура для сообщения {message_id}")
-                                    except Exception as edit_e:
-                                        print(f"Ошибка обновления клавиатуры: {edit_e}")
-                        except Exception as e:
-                            print(f"Ошибка при отправке уведомления: {e}")
+                        with urllib.request.urlopen(req, timeout=5) as response:
+                            resp_data = json.loads(response.read().decode('utf-8'))
+                            message_id = resp_data.get('result', {}).get('message_id')
+                            print(f"Уведомление отправлено пользователю {notify_data['user_id']} о команде {notify_data['command']}={notify_data['value']}, message_id={message_id}")
+                            
+                            # Обновляем callback_data кнопки с message_id
+                            if message_id:
+                                edit_keyboard = [[{"text": "🗑️ Удалить", "callback_data": f"del_notify_{message_id}"}]]
+                                edit_url = f"https://api.telegram.org/bot{bot_token}/editMessageReplyMarkup"
+                                edit_payload = {
+                                    "chat_id": notify_data["chat_id"],
+                                    "message_id": message_id,
+                                    "reply_markup": {"inline_keyboard": edit_keyboard}
+                                }.encode('utf-8')
+                                edit_req = urllib.request.Request(edit_url, data=edit_payload, headers={'Content-Type': 'application/json'})
+                                with urllib.request.urlopen(edit_req, timeout=5) as edit_response:
+                                    print(f"Обновлена клавиатура для сообщения {message_id}")
+                    except Exception as e:
+                        print(f"Ошибка при отправке уведомления: {e}")
         
         return result  # Плоский формат для Arduino: {"light": "on", ...}
         
     except HTTPException as he:
-        return {"error": he.detail}
+        raise he
     except Exception as e:
         print(f"Error in device_get_endpoint: {e}")
-        return {"error": "Internal server error"}
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 
