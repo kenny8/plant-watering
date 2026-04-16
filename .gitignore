@@ -1,9 +1,12 @@
 ```
-# Python
-__pycache__/
+# Compiled and build artifacts
 *.pyc
-*.pyo
-*.pyd
+__pycache__/
+
+# Dependencies
+.venv/
+venv/
+node_modules/
 
 # Logs and temp files
 *.log
@@ -13,19 +16,70 @@ __pycache__/
 # Environment
 .env
 .env.local
-*.env.*
+.env.*
 
 # Editors
 .vscode/
 .idea/
 
-# Dependencies
-.venv/
-venv/
-node_modules/
+# Coverage reports
+.coverage
+coverage/
+htmlcov/
 
-# Build artifacts
-dist/
-build/
-target/
+# Python specific
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg-info/
+
+# Testing
+.pytest_cache/
+.mypy_cache/
+.tox/
+
+# Distribution / packaging
+*.tar.gz
+*.whl
+*.egg
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Backup files
+*~
+*.bak
+*.swp
+
+# Local configuration files
+config/local_settings.py
+settings_local.py
+
+# IDE specific
+*.iml
+*.ipr
+*.iws
+nbproject/
+
+# Documentation builds
+docs/_build/
+
+# Virtual environments
+.venv/
+env/
+ENV/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# PyCharm
+.idea/
+
+# VS Code
+.vscode/
+
+# Original rules preserved
+*.log
 ```
