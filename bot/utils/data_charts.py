@@ -76,6 +76,9 @@ def _generate_no_data_image() -> io.BytesIO:
     ax.set_facecolor('#f5f5f5')
     fig.patch.set_facecolor('#f5f5f5')
     
+    # Настройка шрифта для поддержки кириллицы
+    plt.rcParams['font.family'] = ['DejaVu Sans', 'Arial Unicode MS', 'sans-serif']
+    
     ax.text(
         0.5, 0.5,
         "📭 Недостаточно данных\nдля построения графика",
@@ -94,6 +97,67 @@ def _generate_no_data_image() -> io.BytesIO:
     plt.close(fig)
     logger.info("[CHARTS] Изображение 'Недостаточно данных' сгенерировано")
     
+    return buffer
+
+
+def _plot_raw_data(
+    data_points: list[tuple[datetime, float]], 
+    field_name: str, 
+    detailed: bool = False
+) -> io.BytesIO:
+    """
+    Построение графика по исходным данным без агрегации.
+    
+    Args:
+        data_points: Список кортежей (datetime, value)
+        field_name: Имя поля для отображения
+        detailed: Если True, показывать время с точностью до минут, иначе только дату
+    """
+    logger.debug(f"[CHARTS] Построение детального графика по {len(data_points)} точкам")
+    
+    x_dates = [p[0] for p in data_points]
+    y_values = [p[1] for p in data_points]
+    
+    buffer = io.BytesIO()
+    
+    fig, ax = plt.subplots(figsize=(12, 6))
+    fig.patch.set_facecolor('#ffffff')
+    ax.set_facecolor('#f8f9fa')
+    
+    # Настройка шрифта для поддержки кириллицы и emoji
+    plt.rcParams['font.family'] = ['DejaVu Sans', 'Arial Unicode MS', 'sans-serif']
+    
+    # Линейный график
+    ax.plot(x_dates, y_values, marker='o', linestyle='-', linewidth=2, markersize=4, color='#2196F3', alpha=0.7)
+    
+    # Заголовок и подписи осей
+    field_display = " ".join(word.capitalize() for word in field_name.replace('_', ' ').split())
+    title_suffix = "детальные показания" if detailed else "показания"
+    ax.set_title(f"{field_display} — {title_suffix}", fontsize=14, fontweight='bold', pad=15)
+    ax.set_xlabel("Дата", fontsize=11)
+    ax.set_ylabel(f"Значение {field_display}", fontsize=11)
+    
+    # Сетка
+    ax.grid(True, linestyle='--', alpha=0.7)
+    
+    # Форматирование оси X
+    if detailed:
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%d.%m %H:%M'))
+    else:
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%d.%m'))
+    plt.xticks(rotation=45, ha='right')
+    
+    # Отступы
+    plt.tight_layout()
+    
+    # Сохранение в буфер
+    plt.savefig(buffer, format='png', dpi=100, bbox_inches='tight', facecolor=fig.get_facecolor())
+    buffer.seek(0)
+    
+    file_size = buffer.tell()
+    logger.info(f"[CHARTS] Детальный график сгенерирован успешно (размер: {file_size} байт)")
+    
+    plt.close(fig)
     return buffer
 
 
@@ -211,7 +275,21 @@ def generate_analysis_chart(
     
     if len(agg_rows) < 2:
         logger.warning(f"[CHARTS] После агрегации недостаточно данных ({len(agg_rows)} точек)")
-        return _generate_no_data_image()
+        # Если исходных данных >= 2, строим график по ним без агрегации
+        raw_data_points = []
+        for row in rows:
+            if row[0] is not None and row[1] is not None:
+                try:
+                    raw_data_points.append((row[0], float(row[1])))
+                except (ValueError, TypeError):
+                    continue
+        
+        if len(raw_data_points) >= 2:
+            logger.info(f"[CHARTS] Построение графика по {len(raw_data_points)} исходным точкам (без агрегации)")
+            return _plot_raw_data(raw_data_points, field_name, detailed=True)
+        else:
+            logger.warning(f"[CHARTS] Недостаточно исходных данных для построения графика ({len(raw_data_points)} точек)")
+            return _generate_no_data_image()
     
     # Подготовка данных для графика
     x_dates = []
@@ -243,6 +321,18 @@ def generate_analysis_chart(
     
     if len(x_dates) < 2:
         logger.warning(f"[CHARTS] После обработки недостаточно валидных данных")
+        # Пробуем построить по исходным данным
+        raw_data_points = []
+        for row in rows:
+            if row[0] is not None and row[1] is not None:
+                try:
+                    raw_data_points.append((row[0], float(row[1])))
+                except (ValueError, TypeError):
+                    continue
+        
+        if len(raw_data_points) >= 2:
+            logger.info(f"[CHARTS] Построение графика по {len(raw_data_points)} исходным точкам (fallback)")
+            return _plot_raw_data(raw_data_points, field_name, detailed=False)
         return _generate_no_data_image()
     
     # Построение графика
@@ -253,6 +343,9 @@ def generate_analysis_chart(
     fig, ax = plt.subplots(figsize=(12, 6))
     fig.patch.set_facecolor('#ffffff')
     ax.set_facecolor('#f8f9fa')
+    
+    # Настройка шрифта для поддержки кириллицы
+    plt.rcParams['font.family'] = ['DejaVu Sans', 'Arial Unicode MS', 'sans-serif']
     
     # Линейный график
     ax.plot(x_dates, y_values, marker='o', linestyle='-', linewidth=2, markersize=6, color='#2196F3')
