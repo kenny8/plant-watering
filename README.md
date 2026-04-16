@@ -38,7 +38,7 @@ graph TB
     end
     
     WEB -->|REST API /api/*| API
-    DEVICES -->|HTTP POST/GET<br/>/{machine_name}/{device_id}/endpoint| API
+    DEVICES -->|HTTP POST/GET endpoint| API
     API <-->|SQLAlchemy| DB
     BOT <-->|Polling| TELEGRAM
     BOT <-->|SQLAlchemy| DB
