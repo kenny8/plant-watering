@@ -39,34 +39,50 @@ def get_build_get_fields(database: Database, build_id: int) -> Optional[list[tup
             )
             row = result.fetchone()
             if not row or not row[0]:
-                logger.debug(f"get_fields для build_id={build_id} пуст или NULL")
+                logger.warning(f"get_fields для build_id={build_id} пуст или NULL (row={row})")
                 return None
             
             get_fields_data = row[0]
+            logger.info(f"get_fields для build_id={build_id}: тип={type(get_fields_data)}, значение={repr(get_fields_data)[:500]}")
+            
             # Парсим JSON
             if isinstance(get_fields_data, str):
                 data = json.loads(get_fields_data)
             else:
                 data = get_fields_data
             
+            logger.info(f"Распарсенные данные: тип={type(data)}, значение={repr(data)[:500]}")
+            
             commands = []
+            # Формат: простой список строк ["cmd1", "cmd2"] - используем cmd как human
+            if isinstance(data, list) and all(isinstance(x, str) for x in data):
+                for cmd in data:
+                    commands.append((cmd, cmd))
             # Формат: массив объектов [{"cmd": "...", "human": "..."}, ...]
-            if isinstance(data, list):
+            elif isinstance(data, list):
                 for item in data:
                     if isinstance(item, dict) and "cmd" in item and "human" in item:
                         commands.append((item["cmd"], item["human"]))
+                    elif isinstance(item, dict):
+                        # Пробуем альтернативные ключи
+                        cmd = item.get("cmd") or item.get("name") or item.get("field") or item.get("key")
+                        human = item.get("human") or item.get("title") or item.get("label") or item.get("name")
+                        if cmd and human:
+                            commands.append((cmd, human))
+                        elif cmd:
+                            commands.append((cmd, cmd))
             # Формат: dict {"cmd1": "human1", "cmd2": "human2"}
             elif isinstance(data, dict):
                 for cmd, human in data.items():
-                    commands.append((cmd, human))
+                    commands.append((cmd, human if human else cmd))
             
-            logger.debug(f"Получено {len(commands)} GET-команд для build_id={build_id}")
+            logger.info(f"Итого получено {len(commands)} GET-команд для build_id={build_id}: {commands}")
             return commands if commands else None
     except json.JSONDecodeError as e:
         logger.error(f"Ошибка парсинга JSON get_fields для build_id={build_id}: {e}")
         return None
     except Exception as e:
-        logger.error(f"Ошибка получения get_fields для build_id={build_id}: {e}")
+        logger.error(f"Ошибка получения get_fields для build_id={build_id}: {e}", exc_info=True)
         return None
 
 
