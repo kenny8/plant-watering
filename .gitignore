@@ -1,1 +1,31 @@
-Nothing should be ignored based on the provided file changes, as only a Python source file (`bot/handlers/task_handlers.py`) was modified without any build artifacts, dependencies, or temporary files present in the change list.
+```
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
+.vscode/
+.idea/
+
+# Dependencies
+.venv/
+venv/
+node_modules/
+
+# Build artifacts
+dist/
+build/
+target/
+```
