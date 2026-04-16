@@ -1,1 +1,44 @@
-Nothing needs to be added to the .gitignore file based on the provided file changes, as they only include source code files (.py, .md) and no build artifacts, dependencies, or temporary files that should be ignored.
+```
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.ENV
+.env
+.env.local
+.env.*
+.venv.bak/
+.python-version
+.python_history
+.python_location
+.pythonrc
+.pytest_cache/
+.mypy_cache/
+.coverage
+coverage/
+htmlcov/
+.nox/
+.tox/
+.hypothesis/
+
+# Database
+*.db
+*.db-journal
+
+# Logs
+*.log
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+```
