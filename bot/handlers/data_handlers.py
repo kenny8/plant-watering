@@ -207,6 +207,8 @@ async def handle_device_select(
     """
     Обработчик выбора конкретного устройства.
     Загружает список датчиков/полей для устройства.
+    Логика: device_id -> build_id -> post_fields (JSON) -> список полей.
+    Fallback: device_data.field_name.
     """
     query = update.callback_query
     await query.answer()
@@ -218,6 +220,8 @@ async def handle_device_select(
     except (ValueError, IndexError):
         await query.answer("⚠️ Ошибка: неверный ID устройства", show_alert=True)
         return
+    
+    print(f"🔍 [ЭТАП 2] Выбор устройства: device_id={device_id}")
     
     db: Database = context.bot_data['db']
     
@@ -232,10 +236,12 @@ async def handle_device_select(
             row = result.fetchone()
             if row:
                 device_info = {"id": row[0], "name": row[1], "build_id": row[2]}
+                print(f"✅ Устройство найдено: id={row[0]}, name='{row[1]}', build_id={row[2]}")
     except Exception as e:
         print(f"❌ Ошибка получения информации об устройстве: {e}")
     
     if not device_info:
+        print(f"❌ Устройство с ID {device_id} не найдено в БД")
         await query.edit_message_text(
             text="⚠️ _Устройство не найдено или ошибка загрузки._",
             parse_mode='Markdown',
@@ -253,6 +259,7 @@ async def handle_device_select(
     
     # Сначала пытаемся получить из builds.post_fields
     if build_id:
+        print(f"🔍 Поиск post_fields в builds для build_id={build_id}")
         try:
             with db.engine.connect() as conn:
                 result = conn.execute(
@@ -262,20 +269,40 @@ async def handle_device_select(
                 row = result.fetchone()
                 if row and row[0]:
                     post_fields_raw = row[0]
+                    print(f"📦 Получены post_fields (тип={type(post_fields_raw).__name__}): {post_fields_raw[:100] if isinstance(post_fields_raw, str) else post_fields_raw}")
+                    
                     # Если это JSON строка - парсим
                     if isinstance(post_fields_raw, str):
                         post_fields_data = json.loads(post_fields_raw)
                         if isinstance(post_fields_data, list):
-                            fields = [str(f) for f in post_fields_data if f]
+                            # Поддержка разных форматов: ["temp", {"name": "Humidity"}, {"key": "Press"}]
+                            for item in post_fields_data:
+                                if isinstance(item, str):
+                                    fields.append(item)
+                                elif isinstance(item, dict):
+                                    # Ищем ключи name, key, field_name
+                                    field_val = item.get('name') or item.get('key') or item.get('field_name')
+                                    if field_val:
+                                        fields.append(str(field_val))
                         elif isinstance(post_fields_data, dict):
                             fields = list(post_fields_data.keys())
                     elif isinstance(post_fields_raw, list):
-                        fields = [str(f) for f in post_fields_raw if f]
+                        for item in post_fields_raw:
+                            if isinstance(item, str):
+                                fields.append(item)
+                            elif isinstance(item, dict):
+                                field_val = item.get('name') or item.get('key') or item.get('field_name')
+                                if field_val:
+                                    fields.append(str(field_val))
+                    
+                    print(f"✅ Извлечено {len(fields)} полей из builds.post_fields")
         except Exception as e:
             print(f"⚠️ Ошибка парсинга post_fields: {e}")
     
     # Fallback: если post_fields пустой, берем из device_data
     if not fields:
+        print(f"⚠️ post_fields пустой или NULL для build_id={build_id}, используем fallback")
+        print(f"🔍 Fallback: поиск полей в device_data для device_id={device_id}")
         try:
             with db.engine.connect() as conn:
                 result = conn.execute(
@@ -289,6 +316,7 @@ async def handle_device_select(
                 )
                 rows = result.fetchall()
                 fields = [row[0] for row in rows if row[0]]
+                print(f"✅ Извлечено {len(fields)} полей из device_data.field_name")
         except Exception as e:
             print(f"❌ Ошибка получения полей из device_data: {e}")
     
@@ -296,8 +324,9 @@ async def handle_device_select(
     header_text = f"📊 **Данные: {device_name}**\n\nВыберите датчик/поле:"
     
     if not fields:
+        print(f"❌ Нет доступных полей для устройства {device_id}")
         await query.edit_message_text(
-            text=header_text + "\n\n⚠️ _Нет доступных данных для этого устройства._",
+            text=header_text + "\n\n⚠️ _Нет доступных данных для этого устройства._\n\n_Проверьте настройки сборки (post_fields) или наличие данных в БД._",
             parse_mode='Markdown',
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton(text="🔙 К списку устройств", callback_data="data_list_p0")
@@ -308,6 +337,7 @@ async def handle_device_select(
     # Строим клавиатуру с полями (первая страница)
     reply_markup, total_pages = build_fields_keyboard(fields, device_id, page=0)
     
+    print(f"✅ Отправка списка полей: {len(fields)} шт., страниц={total_pages}")
     await query.edit_message_text(
         text=header_text,
         reply_markup=reply_markup,
