@@ -680,6 +680,123 @@ async def handle_task_command_select(
     )
 
 
+async def handle_task_command_execution(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """
+    Обработчик выполнения команды.
+    callback_data: task_cmd_exec_{device_id}_{build_id}_{cmd_machine}_{value_machine}
+    
+    Записывает команду в таблицу device_commands в БД.
+    """
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    user_id = query.from_user.id
+    
+    logger.info(f"[TASK_COMMAND_EXEC] Получен callback: {data} от user_id={user_id}")
+    
+    # Парсим device_id, build_id, cmd_machine, value_machine
+    # Формат: task_cmd_exec_{device_id}_{build_id}_{cmd_machine}_{value_machine}
+    try:
+        parts = data.split('_')
+        if len(parts) < 7:
+            raise ValueError("Недостаточно частей в callback_data")
+        device_id = int(parts[3])
+        build_id = int(parts[4])
+        cmd_machine = parts[5]
+        value_machine = parts[6]
+        logger.debug(f"Распарсены параметры: device_id={device_id}, build_id={build_id}, cmd={cmd_machine}, value={value_machine}")
+    except (ValueError, IndexError) as e:
+        logger.error(f"Ошибка парсинга callback_data {data}: {e}")
+        await query.answer("⚠️ Ошибка: неверный формат команды", show_alert=True)
+        return
+    
+    db: Database = context.bot_data['db']
+    
+    # Получаем имя устройства для отображения
+    device_human_name = None
+    try:
+        with db.engine.connect() as conn:
+            result = conn.execute(
+                text("""
+                    SELECT device_human_name 
+                    FROM user_devices 
+                    WHERE user_id = :user_id AND device_id = :device_id AND build_id = :build_id
+                """),
+                {"user_id": user_id, "device_id": device_id, "build_id": build_id}
+            )
+            row = result.fetchone()
+            if row:
+                device_human_name = row[0]
+    except Exception as e:
+        logger.error(f"SQL ошибка при получении имени устройства: {e}")
+    
+    # Записываем команду в таблицу device_commands
+    try:
+        with db.engine.connect() as conn:
+            # Проверяем существование таблицы device_commands, создаём если нет
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS `device_commands` (
+                  `id` int(11) NOT NULL AUTO_INCREMENT,
+                  `device_id` int(11) NOT NULL,
+                  `command` varchar(255) NOT NULL,
+                  `value` varchar(255) NOT NULL,
+                  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+                  `is_executed` tinyint(1) DEFAULT 0,
+                  PRIMARY KEY (`id`),
+                  KEY `device_id` (`device_id`),
+                  CONSTRAINT `device_commands_ibfk_1` FOREIGN KEY (`device_id`) REFERENCES `devices` (`id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+            """))
+            conn.commit()
+            
+            # Вставляем новую команду
+            conn.execute(
+                text("""
+                    INSERT INTO device_commands (device_id, command, value, is_executed)
+                    VALUES (:device_id, :command, :value, 0)
+                """),
+                {"device_id": device_id, "command": cmd_machine, "value": value_machine}
+            )
+            conn.commit()
+            
+        logger.info(f"Команда записана в БД: device_id={device_id}, command={cmd_machine}, value={value_machine}")
+        
+        # Формируем сообщение об успехе
+        success_text = f"✅ Команда отправлена!\n\nУстройство: {device_human_name or 'Неизвестно'}\nКоманда: {cmd_machine}\nЗначение: {value_machine}\n\nОжидается выполнение устройством..."
+        
+        keyboard: list[list[InlineKeyboardButton]] = []
+        keyboard.append([InlineKeyboardButton(
+            text="🔙 Назад к командам",
+            callback_data=f"task_cmd_{device_id}_{build_id}_p0"
+        )])
+        keyboard.append([InlineKeyboardButton(
+            text="🔙 К списку устройств",
+            callback_data="task_list_p1"
+        )])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            text=success_text,
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Ошибка записи команды в БД: {e}", exc_info=True)
+        await query.answer("⚠️ Ошибка при отправке команды", show_alert=True)
+        await query.edit_message_text(
+            text="⚠️ _Произошла ошибка при отправке команды. Попробуйте позже._",
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton(text="🔙 Назад", callback_data=f"task_cmd_{device_id}_{build_id}_p0")
+            ]])
+        )
+
+
 def register_task_handlers(application) -> None:
     """
     Регистрирует все обработчики раздела "📝 Задачи" в приложении.
@@ -707,4 +824,9 @@ def register_task_handlers(application) -> None:
     # Обработчик выбора GET-команды - callback_data: task_cmd_val_{device_id}_{build_id}_{cmd_machine}
     application.add_handler(
         CallbackQueryHandler(handle_task_command_select, pattern=r"^task_cmd_val_\d+_\d+_.+$")
+    )
+    
+    # Обработчик выполнения команды - callback_data: task_cmd_exec_{device_id}_{build_id}_{cmd}_{value}
+    application.add_handler(
+        CallbackQueryHandler(handle_task_command_execution, pattern=r"^task_cmd_exec_\d+_\d+_.+_.+$")
     )

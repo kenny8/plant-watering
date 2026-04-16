@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
-from sqlalchemy import create_engine, Column, Integer, String, JSON, Text
+from sqlalchemy import create_engine, Column, Integer, String, JSON, Text, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 import jwt
@@ -56,6 +56,15 @@ class DeviceDataRecord(Base):
     field_name = Column(String)
     field_value = Column(Text)
     created_at = Column(String)
+
+class DeviceCommand(Base):
+    __tablename__ = "device_commands"
+    id = Column(Integer, primary_key=True, index=True)
+    device_id = Column(Integer, index=True)
+    command = Column(String)
+    value = Column(String)
+    created_at = Column(String)
+    is_executed = Column(Boolean, default=False)
     
 Base.metadata.create_all(bind=engine)
 
@@ -209,12 +218,29 @@ async def device_get_endpoint(machine_name: str, device_id: int, db: Session = D
         if not build:
             return {"error": "Build not found"}
         
+        # Получаем все невыполненные команды для этого устройства
+        commands = db.query(DeviceCommand).filter(
+            DeviceCommand.device_id == device_id,
+            DeviceCommand.is_executed == False
+        ).all()
+        
+        # Формируем плоский JSON формат {command: value, ...}
+        result = {}
+        for cmd in commands:
+            result[cmd.command] = cmd.value
+            # Помечаем команду как выполненную (в упрощенной версии - сразу после выдачи)
+            cmd.is_executed = True
+        
+        if commands:
+            db.commit()
+            print(f"Отправлено команд устройству {device_id}: {result}")
+        
         return {
             "status": "success",
             "device_id": device_id,
             "device_human_name": device.human_name,
             "build": build.human_name,
-            "message": f"GET endpoint for {machine_name}"
+            "commands": result  # Плоский формат для Arduino
         }
         
     except HTTPException as he:
