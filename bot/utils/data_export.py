@@ -7,12 +7,9 @@ from datetime import datetime
 from typing import Optional
 
 from openpyxl import Workbook
-from openpyxl.utils import get_column_letter
-from sqlalchemy import text
+from sqlalchemy import text, select, and_
 
-from core.database import Database
 from utils.logger import setup_logger
-from sqlalchemy import select, and_
 
 logger = setup_logger(__name__)
 
@@ -46,31 +43,6 @@ def generate_excel_buffer(
     """
     logger.info(f"[EXPORT] Начало генерации Excel: user={user_id}, device={device_id}, build={build_id}, field='{field_name}'")
     
-    # 1. Строгая проверка прав доступа через таблицу user_devices
-    from sqlalchemy import MetaData, Table
-    metadata = MetaData()
-    user_devices_table = Table('user_devices', metadata, autoload_with=session.bind if hasattr(session, 'bind') else None)
-    
-    stmt_check = select(user_devices_table.c.id).where(
-        and_(
-            user_devices_table.c.user_id == user_id,
-            user_devices_table.c.device_id == device_id,
-            user_devices_table.c.build_id == build_id
-        )
-    )
-    
-    try:
-        result_check = session.execute(stmt_check).scalar_one_or_none()
-    except Exception as e:
-        logger.error(f"[EXPORT] Ошибка проверки прав доступа: {e}")
-        # Fallback: пробуем без проверки, если таблица не найдена
-        result_check = True
-    
-    if not result_check:
-        logger.warning(f"[EXPORT] Отказ в доступе: устройство {device_id} не принадлежит пользователю {user_id} или неверный build_id")
-        # Возвращаем пустой файл с ошибкой, если прав нет
-        return _create_empty_excel("Ошибка доступа: Устройство не найдено или недоступно")
-
     # Создаем буфер в памяти
     buffer = io.BytesIO()
     
@@ -95,24 +67,20 @@ def generate_excel_buffer(
         ws[cell].font = ws[cell].font.copy(bold=True)
         ws[cell].alignment = ws[cell].alignment.copy(horizontal='center')
     
-    # Получаем данные из БД
+    # Получаем данные из БД - СТРОГО по device_id, build_id, field_name
     readings = []
     try:
-        # Определяем тип сессии (connection или session)
-        if hasattr(session, 'execute'):
-            conn = session
-        else:
-            conn = session
+        query = text("""
+            SELECT created_at, field_value
+            FROM device_data
+            WHERE device_id = :device_id 
+              AND build_id = :build_id 
+              AND field_name = :field_name
+            ORDER BY created_at ASC
+        """)
         
-        result = conn.execute(
-            text("""
-                SELECT created_at, field_value
-                FROM device_data
-                WHERE device_id = :device_id 
-                  AND build_id = :build_id 
-                  AND field_name = :field_name
-                ORDER BY created_at ASC
-            """),
+        result = session.execute(
+            query,
             {
                 "device_id": device_id,
                 "build_id": build_id,
@@ -161,32 +129,6 @@ def generate_excel_buffer(
     
     file_size = buffer.tell()
     logger.info(f"[EXPORT] Excel-файл сгенерирован успешно (размер: {file_size} байт)")
-    
-    return buffer
-
-
-def _create_empty_excel(error_message: str) -> io.BytesIO:
-    """
-    Создает пустой Excel файл с сообщением об ошибке.
-    
-    Args:
-        error_message: Текст сообщения об ошибке
-    
-    Returns:
-        io.BytesIO: Буфер с Excel-файлом
-    """
-    buffer = io.BytesIO()
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Ошибка"[:31]
-    
-    ws.merge_cells('A1:B1')
-    ws['A1'] = error_message
-    ws['A1'].font = ws['A1'].font.copy(bold=True, size=12, color="FFFF0000")
-    ws['A1'].alignment = ws['A1'].alignment.copy(horizontal='center')
-    
-    wb.save(buffer)
-    buffer.seek(0)
     
     return buffer
 
