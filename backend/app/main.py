@@ -7,7 +7,8 @@ from sqlalchemy.orm import sessionmaker, Session
 import jwt
 import datetime
 import os
-import requests
+import urllib.request
+import json
 
 app = FastAPI()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
@@ -272,15 +273,14 @@ async def device_get_endpoint(machine_name: str, device_id: int, db: Session = D
                             "text": notification_text,
                             "parse_mode": "Markdown",
                             "reply_markup": {"inline_keyboard": keyboard}
-                        }
+                        }.encode('utf-8')
                         
-                        response = requests.post(send_url, json=payload, timeout=5)
-                        if response.status_code == 200:
-                            print(f"Уведомление отправлено пользователю {notify_data['user_id']} о команде {notify_data['command']}={notify_data['value']}")
-                        else:
-                            print(f"Ошибка отправки уведомления: {response.status_code} - {response.text}")
-                    except Exception as e:
-                        print(f"Ошибка при отправке уведомления: {e}")
+                        req = urllib.request.Request(send_url, data=payload, headers={'Content-Type': 'application/json'})
+                        try:
+                            with urllib.request.urlopen(req, timeout=5) as response:
+                                print(f"Уведомление отправлено пользователю {notify_data['user_id']} о команде {notify_data['command']}={notify_data['value']}")
+                        except Exception as e:
+                            print(f"Ошибка при отправке уведомления: {e}")
         
         return result  # Плоский формат для Arduino: {"light": "on", ...}
         
