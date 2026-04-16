@@ -7,6 +7,7 @@ from sqlalchemy.orm import sessionmaker, Session
 import jwt
 import datetime
 import os
+import requests
 
 app = FastAPI()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
@@ -226,20 +227,67 @@ async def device_get_endpoint(machine_name: str, device_id: int, db: Session = D
         
         # Формируем плоский JSON формат {command: value, ...}
         result = {}
+        commands_to_notify = []  # Сохраняем команды для отправки уведомлений
+        
         for cmd in commands:
             result[cmd.command] = cmd.value
-            # Помечаем команду как выполненную (в упрощенной версии - сразу после выдачи)
+            # Помечаем команду как выполненную
             cmd.is_executed = True
+            # Сохраняем данные для уведомления
+            if cmd.user_id and cmd.chat_id:
+                commands_to_notify.append({
+                    "user_id": cmd.user_id,
+                    "chat_id": cmd.chat_id,
+                    "command": cmd.command,
+                    "value": cmd.value,
+                    "device_human_name": device.human_name
+                })
         
         if commands:
             db.commit()
             print(f"Отправлено команд устройству {device_id}: {result}")
+            
+            # Отправляем уведомления пользователям чьи команды были выполнены
+            # Берем токен бота из базы данных
+            settings = db.query(Settings).filter(Settings.user_id == 1).first()
+            if settings and settings.telegram_bot_token:
+                bot_token = settings.telegram_bot_token
+                
+                for notify_data in commands_to_notify:
+                    try:
+                        notification_text = (
+                            f"✅ _Команда выполнена!_\n\n"
+                            f"📱 Устройство: {notify_data['device_human_name'] or 'Неизвестно'}\n"
+                            f"⚙️ Команда: `{notify_data['command']}`\n"
+                            f"💡 Значение: `{notify_data['value']}`"
+                        )
+                        
+                        # Создаем клавиатуру с кнопкой удаления
+                        keyboard = [[{"text": "🗑️ Удалить", "callback_data": f"del_notify_{notify_data['chat_id']}"}]]
+                        
+                        # Отправляем сообщение через Telegram Bot API
+                        send_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+                        payload = {
+                            "chat_id": notify_data["chat_id"],
+                            "text": notification_text,
+                            "parse_mode": "Markdown",
+                            "reply_markup": {"inline_keyboard": keyboard}
+                        }
+                        
+                        response = requests.post(send_url, json=payload, timeout=5)
+                        if response.status_code == 200:
+                            print(f"Уведомление отправлено пользователю {notify_data['user_id']} о команде {notify_data['command']}={notify_data['value']}")
+                        else:
+                            print(f"Ошибка отправки уведомления: {response.status_code} - {response.text}")
+                    except Exception as e:
+                        print(f"Ошибка при отправке уведомления: {e}")
         
         return result  # Плоский формат для Arduino: {"light": "on", ...}
         
     except HTTPException as he:
         return {"error": he.detail}
     except Exception as e:
+        print(f"Error in device_get_endpoint: {e}")
         return {"error": "Internal server error"}
 
 

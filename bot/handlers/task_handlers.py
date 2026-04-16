@@ -748,6 +748,8 @@ async def handle_task_command_execution(
                   `value` varchar(255) NOT NULL,
                   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
                   `is_executed` tinyint(1) DEFAULT 0,
+                  `user_id` int(11) DEFAULT NULL,
+                  `chat_id` bigint(20) DEFAULT NULL,
                   PRIMARY KEY (`id`),
                   KEY `device_id` (`device_id`),
                   CONSTRAINT `device_commands_ibfk_1` FOREIGN KEY (`device_id`) REFERENCES `devices` (`id`)
@@ -758,17 +760,17 @@ async def handle_task_command_execution(
             # Вставляем новую команду
             conn.execute(
                 text("""
-                    INSERT INTO device_commands (device_id, command, value, is_executed)
-                    VALUES (:device_id, :command, :value, 0)
+                    INSERT INTO device_commands (device_id, command, value, is_executed, user_id, chat_id)
+                    VALUES (:device_id, :command, :value, 0, :user_id, :chat_id)
                 """),
-                {"device_id": device_id, "command": cmd_machine, "value": value_machine}
+                {"device_id": device_id, "command": cmd_machine, "value": value_machine, "user_id": user_id, "chat_id": chat_id}
             )
             conn.commit()
             
-        logger.info(f"Команда записана в БД: device_id={device_id}, command={cmd_machine}, value={value_machine}")
+        logger.info(f"Команда записана в БД: device_id={device_id}, command={cmd_machine}, value={value_machine}, user_id={user_id}")
         
         # Формируем сообщение об успехе
-        success_text = f"✅ Команда отправлена!\n\nУстройство: {device_human_name or 'Неизвестно'}\nКоманда: {cmd_machine}\nЗначение: {value_machine}\n\nОжидается выполнение устройством..."
+        success_text = f"✅ Команда поставлена в очередь!\n\nУстройство: {device_human_name or 'Неизвестно'}\nКоманда: {cmd_machine}\nЗначение: {value_machine}\n\nУстройство выполнит команду при следующем соединении."
         
         keyboard: list[list[InlineKeyboardButton]] = []
         keyboard.append([InlineKeyboardButton(
@@ -787,34 +789,6 @@ async def handle_task_command_execution(
             reply_markup=reply_markup,
             parse_mode='Markdown'
         )
-        
-        # Отправляем уведомление если включено
-        if notification_service:
-            try:
-                notifications_enabled = await notification_service.get_user_notification_status(user_id, chat_id)
-                if notifications_enabled:
-                    notification_text = (
-                        f"✅ _Команда выполнена!_\n\n"
-                        f"📱 Устройство: {device_human_name or 'Неизвестно'}\n"
-                        f"⚙️ Команда: `{cmd_machine}`\n"
-                        f"💡 Значение: `{value_machine}`"
-                    )
-                    
-                    # Создаем клавиатуру с кнопкой удаления
-                    notify_keyboard = [[
-                        InlineKeyboardButton(text="🗑️ Удалить", callback_data=f"del_notify_{query.message.message_id}")
-                    ]]
-                    notify_reply_markup = InlineKeyboardMarkup(notify_keyboard)
-                    
-                    await context.bot.send_message(
-                        chat_id=chat_id,
-                        text=notification_text,
-                        reply_markup=notify_reply_markup,
-                        parse_mode='Markdown'
-                    )
-                    logger.info(f"Уведомление отправлено пользователю {user_id} о команде {cmd_machine}={value_machine}")
-            except Exception as e:
-                logger.error(f"Ошибка отправки уведомления: {e}")
         
     except Exception as e:
         logger.error(f"Ошибка записи команды в БД: {e}", exc_info=True)
