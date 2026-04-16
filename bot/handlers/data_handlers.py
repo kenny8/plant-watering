@@ -839,7 +839,8 @@ async def handle_data_export(
     logger.info(f"[DATA_EXPORT] Генерация Excel-файла для field_name='{field_name}'")
     try:
         with db.engine.connect() as conn:
-            buffer = generate_excel_buffer(conn, device_id, build_id, field_name)
+            # Передаем user_id для проверки прав в generate_excel_buffer
+            buffer = generate_excel_buffer(conn, user_id, device_id, build_id, field_name)
     except Exception as e:
         logger.error(f"[DATA_EXPORT] Ошибка генерации Excel: {e}")
         await query.answer(f"⚠️ Ошибка создания файла: {e}", show_alert=True)

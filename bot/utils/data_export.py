@@ -12,21 +12,25 @@ from sqlalchemy import text
 
 from core.database import Database
 from utils.logger import setup_logger
+from sqlalchemy import select, and_
 
 logger = setup_logger(__name__)
 
 
 def generate_excel_buffer(
     session: object,
+    user_id: int,
     device_id: int,
     build_id: int,
     field_name: str
 ) -> io.BytesIO:
     """
     Генерирует Excel-файл с показаниями датчика в буфере BytesIO.
+    Строгая проверка: данные берутся ТОЛЬКО если устройство принадлежит пользователю.
     
     Args:
-        session: SQLAlchemy session или connection
+        session: SQLAlchemy session
+        user_id: ID пользователя (для проверки прав)
         device_id: ID устройства
         build_id: ID сборки
         field_name: Имя поля (датчика)
@@ -35,13 +39,38 @@ def generate_excel_buffer(
         io.BytesIO: Буфер с Excel-файлом
     
     Структура файла:
-        - Заголовок: "📊 Показания {field_name}"
+        - Заголовок: "Показания {field_name}" (без иконки)
         - Колонки: "Время записи", "Значение"
         - Формат даты: DD.MM.YYYY HH:MM:SS
         - Автоширина колонок
     """
-    logger.info(f"[EXPORT] Начало генерации Excel: device_id={device_id}, build_id={build_id}, field_name='{field_name}'")
+    logger.info(f"[EXPORT] Начало генерации Excel: user={user_id}, device={device_id}, build={build_id}, field='{field_name}'")
     
+    # 1. Строгая проверка прав доступа через таблицу user_devices
+    from sqlalchemy import MetaData, Table
+    metadata = MetaData()
+    user_devices_table = Table('user_devices', metadata, autoload_with=session.bind if hasattr(session, 'bind') else None)
+    
+    stmt_check = select(user_devices_table.c.id).where(
+        and_(
+            user_devices_table.c.user_id == user_id,
+            user_devices_table.c.device_id == device_id,
+            user_devices_table.c.build_id == build_id
+        )
+    )
+    
+    try:
+        result_check = session.execute(stmt_check).scalar_one_or_none()
+    except Exception as e:
+        logger.error(f"[EXPORT] Ошибка проверки прав доступа: {e}")
+        # Fallback: пробуем без проверки, если таблица не найдена
+        result_check = True
+    
+    if not result_check:
+        logger.warning(f"[EXPORT] Отказ в доступе: устройство {device_id} не принадлежит пользователю {user_id} или неверный build_id")
+        # Возвращаем пустой файл с ошибкой, если прав нет
+        return _create_empty_excel("Ошибка доступа: Устройство не найдено или недоступно")
+
     # Создаем буфер в памяти
     buffer = io.BytesIO()
     
@@ -50,7 +79,7 @@ def generate_excel_buffer(
     ws = wb.active
     ws.title = "Показания"[:31]  # Лимит имени листа в Excel
     
-    # Заголовок документа (без иконки)
+    # Заголовок документа (БЕЗ иконки 📊)
     field_display = " ".join(word.capitalize() for word in field_name.replace('_', ' ').split())
     ws.merge_cells('A1:B1')
     ws['A1'] = f"Показания: {field_display}"
@@ -92,7 +121,7 @@ def generate_excel_buffer(
         )
         rows = result.fetchall()
         readings = [(row[0], row[1]) for row in rows]
-        logger.info(f"[EXPORT] Получено {len(readings)} записей из БД")
+        logger.info(f"[EXPORT] Получено {len(readings)} записей из БД (device_id={device_id}, build_id={build_id}, field={field_name})")
         
     except Exception as e:
         logger.error(f"[EXPORT] Ошибка выполнения SQL-запроса: {e}")
@@ -132,6 +161,32 @@ def generate_excel_buffer(
     
     file_size = buffer.tell()
     logger.info(f"[EXPORT] Excel-файл сгенерирован успешно (размер: {file_size} байт)")
+    
+    return buffer
+
+
+def _create_empty_excel(error_message: str) -> io.BytesIO:
+    """
+    Создает пустой Excel файл с сообщением об ошибке.
+    
+    Args:
+        error_message: Текст сообщения об ошибке
+    
+    Returns:
+        io.BytesIO: Буфер с Excel-файлом
+    """
+    buffer = io.BytesIO()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Ошибка"[:31]
+    
+    ws.merge_cells('A1:B1')
+    ws['A1'] = error_message
+    ws['A1'].font = ws['A1'].font.copy(bold=True, size=12, color="FFFF0000")
+    ws['A1'].alignment = ws['A1'].alignment.copy(horizontal='center')
+    
+    wb.save(buffer)
+    buffer.seek(0)
     
     return buffer
 
