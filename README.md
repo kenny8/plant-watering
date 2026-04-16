@@ -62,7 +62,8 @@ Web Browser → Nginx → Frontend Static → Backend API → Database
 |-----------|----------|----------|
 | Web ↔ Backend | REST API (HTTP/JSON) | Все запросы через `/api/*` |
 | IoT Devices ↔ Backend | HTTP POST/GET | Endpoint: `/{machine_name}/{device_id}/{post\|get}_endpoint` |
-| Bot ↔ Database | SQLAlchemy (Direct SQL) | Чтение токена, настроек пользователей |
+| IoT Devices ↔ Backend (Commands) | HTTP GET | Устройство опрашивает `/{machine_name}/{device_id}/get_endpoint`, получает команды в формате `{"commands": {"cmd1": "val1", ...}}` |
+| Bot ↔ Database | SQLAlchemy (Direct SQL) | Чтение токена, настроек пользователей, запись команд в device_commands |
 | Bot ↔ Telegram | python-telegram-bot (Polling) | Long-polling для получения обновлений |
 | Nginx ↔ Backend | HTTP Proxy | Reverse proxy для API и статики |
 
@@ -87,7 +88,7 @@ Web Browser → Nginx → Frontend Static → Backend API → Database
 
 ### 1.5 Жизненный цикл типового запроса
 
-#### Запрос от IoT устройства:
+#### Запрос от IoT устройства (POST — отправка данных):
 ```
 1. Device → POST /{machine_name}/{device_id}/post_endpoint
 2. Nginx → Проксирует на backend:8000
@@ -97,7 +98,28 @@ Web Browser → Nginx → Frontend Static → Backend API → Database
 6. Backend → Возвращает {status: "success", ...}
 ```
 
-#### Действие пользователя в боте:
+#### Запрос от IoT устройства (GET — получение команд):
+```
+1. Device → GET /{machine_name}/{device_id}/get_endpoint
+2. Nginx → Проксирует на backend:8000
+3. Backend → get_or_create_device() — проверяет/создает устройство
+4. Backend → Запрашивает невыполненные команды из device_commands
+5. Backend → Формирует плоский JSON {commands: {cmd1: val1, cmd2: val2}}
+6. Backend → Помечает команды как выполненные (is_executed = True)
+7. Backend → Возвращает {status: "success", commands: {...}}
+```
+
+#### Действие пользователя в боте (отправка команды устройству):
+```
+1. User → Нажимает кнопку команды в Telegram (task_cmd_exec_...)
+2. Bot → handle_task_command_execution() парсит callback_data
+3. Bot → Извлекает device_id, command, value
+4. Bot → INSERT INTO device_commands (device_id, command, value, is_executed=0)
+5. Bot → Отправляет подтверждение пользователю
+6. [Device → GET /{machine_name}/{device_id}/get_endpoint → Получает команду]
+```
+
+#### Действие пользователя в боте (общий flow):
 ```
 1. User → Нажимает кнопку в Telegram
 2. Telegram API → Отправляет callback_query боту
@@ -179,6 +201,13 @@ Web Browser → Nginx → Frontend Static → Backend API → Database
 | `handle_fields_pagination` | callback_query | pattern: `^data_fields_\d+_\d+_p\d+` | Пагинация списка датчиков | InlineKeyboard: датчики, ◀️, ▶️, 🔙 | Database → builds.post_fields, device_data |
 | `handle_data_excel` | callback_query | pattern: `^data_excel_\d+_\d+_.+` | Генерация и отправка Excel-файла | Файл .xlsx + сообщение с кнопками навигации | Database → device_data |
 | `handle_data_analyze` | callback_query | pattern: `^data_analyze_\d+_\d+_.+` | Генерация графика анализа | send_photo() с графиком + edit_message_text() исходного | Database → device_data, utils.data_charts.generate_analysis_chart() |
+| `handlers/task_handlers.py` | | | | | |
+| `handle_tasks_section` | message (filter) | Text="📝 Задачи" | Показ списка устройств пользователя для управления задачами | InlineKeyboard: устройства, пагинация | Database → user_devices |
+| `handle_tasks_pagination` | callback_query | pattern: `^task_(list|prev|next)_p\d+$` | Пагинация списка устройств | InlineKeyboard: устройства, ◀️, ▶️ | Database → user_devices |
+| `handle_task_device_select` | callback_query | pattern: `^task_dev_\d+_\d+$` | Выбор устройства, загрузка GET-команд из builds.get_fields | Заголовок + список команд (пагинация) | Database → builds.get_fields, user_devices |
+| `handle_commands_pagination` | callback_query | pattern: `^task_cmd_\d+_\d+_p\d+$` | Пагинация списка GET-команд | InlineKeyboard: команды, ◀️, ▶️, 🔙 | Database → builds.get_fields, user_devices |
+| `handle_task_command_select` | callback_query | pattern: `^task_cmd_val_\d+_\d+_.+$` | Выбор команды, показ параметров из bot_parameters | InlineKeyboard: параметры команды (кнопки действий), 🔙 | Database → builds.get_fields, user_devices |
+| `handle_task_command_execution` | callback_query | pattern: `^task_cmd_exec_\d+_\d+_.+_.+$` | Выполнение команды — запись в БД (device_commands) | Подтверждение отправки команды | Database → INSERT INTO device_commands, user_devices |
 
 ### 2.4 Кнопки
 
@@ -296,9 +325,9 @@ user_states = {}  # user_id -> {'state': 'waiting_for_device_id'}
 **Middleware**: [TODO: не реализовано]
 
 **Фильтры**:
-- `filters.Text(["⚙️ Настройки"])` — фильтр по тексту для Reply-кнопок
+- `filters.Text(["⚙️ Настройки", "📊 Данные", "📝 Задачи"])` — фильтр по тексту для Reply-кнопок главного меню
 - `filters.TEXT & ~filters.COMMAND` — ловит все текстовые сообщения кроме команд
-- `pattern="^menu_"`, `pattern="^device_"`, `pattern="^data_"` — regex фильтры для callback_query
+- `pattern="^menu_"`, `pattern="^device_"`, `pattern="^data_"`, `pattern="^task_"` — regex фильтры для callback_query
 
 **Rate-limit**: [TODO: не реализовано]
 
@@ -357,7 +386,7 @@ User Action → Bot Handler → Service Layer → SQLAlchemy → Database
 | Метод | Путь | Описание | Параметры | Ответ | Авторизация | Вызывается кем |
 |-------|------|----------|-----------|-------|-------------|----------------|
 | `POST` | `/{machine_name}/{device_id}/post_endpoint` | Приём данных от устройства | machine_name (path), device_id (path), JSON body | `{status, message, device_human_name, build, received_data}` | Нет | IoT Devices |
-| `GET` | `/{machine_name}/{device_id}/get_endpoint` | Получение данных устройством | machine_name (path), device_id (path) | `{status, device_id, device_human_name, build, message}` | Нет | IoT Devices |
+| `GET` | `/{machine_name}/{device_id}/get_endpoint` | Получение команд устройством | machine_name (path), device_id (path) | `{status, device_id, device_human_name, build, commands: {cmd: value}}` | Нет | IoT Devices |
 | `POST` | `/api/auth/login` | Аутентификация | `{username, password}` | `{token}` | Нет | Frontend |
 | `POST` | `/api/builds` | Создание сборки | `{machine_name, human_name, post_fields, get_fields}` | Build object | JWT | Frontend |
 | `GET` | `/api/builds` | Список сборок | - | List[Build] | JWT | Frontend |
@@ -384,6 +413,7 @@ User Action → Bot Handler → Service Layer → SQLAlchemy → Database
 | `settings` | Settings | Настройки (токен бота) |
 | `devices` | Device | Устройства (привязаны к сборкам) |
 | `device_data` | DeviceDataRecord | Временные ряды данных с устройств |
+| `device_commands` | DeviceCommand | Очередь команд для устройств (бот → устройство) |
 | `user_devices` | UserDevice (в боте) | Связь пользователь-устройство |
 | `user_settings` | [TODO: модель не определена в backend] | Настройки пользователей (уведомления) |
 
@@ -421,6 +451,14 @@ device_data:
   - field_name
   - field_value (Text)
   - created_at
+
+device_commands:
+  - id (PK)
+  - device_id (indexed, FK → devices.id)
+  - command (VARCHAR)
+  - value (VARCHAR)
+  - created_at
+  - is_executed (BOOLEAN, default=False)
 
 user_devices:
   - id (PK)
