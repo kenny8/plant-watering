@@ -218,10 +218,11 @@ async def handle_device_select(
     try:
         device_id = int(data.split('_')[-1])
     except (ValueError, IndexError):
+        print(f"❌ Ошибка парсинга device_id из callback: {data}")
         await query.answer("⚠️ Ошибка: неверный ID устройства", show_alert=True)
         return
     
-    print(f"🔍 [ЭТАП 2] Выбор устройства: device_id={device_id}")
+    print(f"🔍 [ЭТАП 2] Выбор устройства: device_id={device_id}, callback={data}")
     
     db: Database = context.bot_data['db']
     
@@ -236,9 +237,11 @@ async def handle_device_select(
             row = result.fetchone()
             if row:
                 device_info = {"id": row[0], "name": row[1], "build_id": row[2]}
-                print(f"✅ Устройство найдено: id={row[0]}, name='{row[1]}', build_id={row[2]}")
+                print(f"✅ Устройство найдено в БД: id={row[0]}, human_name='{row[1]}', build_id={row[2]}")
+            else:
+                print(f"❌ Устройство с ID {device_id} НЕ НАЙДЕНО в таблице devices")
     except Exception as e:
-        print(f"❌ Ошибка получения информации об устройстве: {e}")
+        print(f"❌ SQL ошибка при получении устройства: {e}")
     
     if not device_info:
         print(f"❌ Устройство с ID {device_id} не найдено в БД")
@@ -269,7 +272,8 @@ async def handle_device_select(
                 row = result.fetchone()
                 if row and row[0]:
                     post_fields_raw = row[0]
-                    print(f"📦 Получены post_fields (тип={type(post_fields_raw).__name__}): {post_fields_raw[:100] if isinstance(post_fields_raw, str) else post_fields_raw}")
+                    preview = str(post_fields_raw)[:150] + "..." if len(str(post_fields_raw)) > 150 else str(post_fields_raw)
+                    print(f"📦 Получены post_fields из builds (тип={type(post_fields_raw).__name__}): {preview}")
                     
                     # Если это JSON строка - парсим
                     if isinstance(post_fields_raw, str):
@@ -438,6 +442,8 @@ async def handle_fields_pagination(
     
     data = query.data
     user_id = query.from_user.id
+
+    print(f"🔍 [ПАГИНАЦИЯ ПОЛЕЙ] Получен callback: {data}")
     
     # Парсим callback_data
     # Форматы: data_fields_{device_id}_p{page}, data_fields_prev_{device_id}_p{page}, data_fields_next_{device_id}_p{page}
