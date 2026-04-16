@@ -17,6 +17,7 @@ import json
 from core.database import Database
 from utils.logger import setup_logger
 from utils.data_export import generate_excel_buffer, format_filename
+from utils.data_charts import generate_analysis_chart
 
 logger = setup_logger(__name__)
 
@@ -754,10 +755,11 @@ async def handle_field_select(
             message_text = base_text
             logger.debug(f"Текст помещается в лимит: {len(message_text)} символов")
 
-    # Формируем клавиатуру с кнопкой экспорта и навигацией
+    # Формируем клавиатуру с кнопкой экспорта, анализа и навигацией
     keyboard = [
         [
             InlineKeyboardButton(text="📥 Скачать Excel", callback_data=f"data_export_{device_id}_{build_id}_{field_name_encoded}"),
+            InlineKeyboardButton(text="📈 Получить анализ", callback_data=f"data_analyze_{device_id}_{build_id}_{field_name_encoded}"),
         ],
         [
             InlineKeyboardButton(text="🔙 Назад к датчикам", callback_data=f"data_fields_{device_id}_{build_id}_p0"),
@@ -915,6 +917,147 @@ async def handle_data_export(
         # Игнорируем ошибку редактирования - файл уже отправлен
 
 
+async def handle_data_analyze(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """
+    Обработчик анализа данных с построением графика.
+    callback_data: data_analyze_{device_id}_{build_id}_{field_name}
+    
+    Логика (Этап 5):
+    1. Отправляет НОВОЕ сообщение с ГРАФИКОМ (send_photo)
+    2. Отправляет ещё одно НОВОЕ текстовое сообщение с кнопками навигации под графиком
+    3. Редактирует ИСХОДНОЕ сообщение: убирает кнопку "📈 Получить анализ", добавляет "✅ Анализ сформирован..."
+    """
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    user_id = query.from_user.id
+    
+    logger.info(f"[DATA_ANALYZE] Получен callback: {data} от user_id={user_id}")
+    
+    # Парсим device_id, build_id и field_name из callback_data
+    # Формат: data_analyze_{device_id}_{build_id}_{field_name}
+    try:
+        parts = data.split('_', 3)
+        device_id = int(parts[2])
+        remaining = parts[3]
+        remaining_parts = remaining.split('_', 1)
+        build_id = int(remaining_parts[0])
+        field_name_encoded = remaining_parts[1] if len(remaining_parts) > 1 else ""
+        field_name = field_name_encoded.replace("_", " ")
+        logger.debug(f"[DATA_ANALYZE] Распарсены параметры: device_id={device_id}, build_id={build_id}, field_name='{field_name}'")
+    except (ValueError, IndexError) as e:
+        logger.error(f"[DATA_ANALYZE] Ошибка парсинга callback_data: {e}")
+        await query.answer("⚠️ Ошибка: неверный формат данных", show_alert=True)
+        return
+    
+    db: Database = context.bot_data['db']
+    chat_id = query.message.chat_id
+    
+    # Проверяем принадлежность устройства пользователю
+    device_human_name = None
+    try:
+        with db.engine.connect() as conn:
+            result = conn.execute(
+                text("""
+                    SELECT device_human_name
+                    FROM user_devices
+                    WHERE user_id = :user_id AND device_id = :device_id AND build_id = :build_id
+                """),
+                {"user_id": user_id, "device_id": device_id, "build_id": build_id}
+            )
+            row = result.fetchone()
+            if row:
+                device_human_name = row[0]
+                logger.debug(f"[DATA_ANALYZE] Устройство найдено: human_name='{device_human_name}'")
+    except Exception as e:
+        logger.error(f"[DATA_ANALYZE] Ошибка получения информации об устройстве: {e}")
+    
+    if not device_human_name:
+        logger.warning(f"[DATA_ANALYZE] Устройство не найдено у пользователя {user_id}")
+        await query.answer("⚠️ Устройство не найдено", show_alert=True)
+        return
+    
+    # Генерируем график
+    logger.info(f"[DATA_ANALYZE] Генерация графика для field_name='{field_name}'")
+    try:
+        with db.engine.connect() as conn:
+            buffer = generate_analysis_chart(conn, device_id, build_id, field_name)
+    except Exception as e:
+        logger.error(f"[DATA_ANALYZE] Ошибка генерации графика: {e}")
+        await query.answer(f"⚠️ Ошибка создания графика: {e}", show_alert=True)
+        return
+    
+    field_display = " ".join(word.capitalize() for word in field_name.split())
+    
+    # 1️⃣ Отправляем НОВОЕ сообщение с ГРАФИКОМ
+    logger.info(f"[DATA_ANALYZE] Отправка графика в чат {chat_id}")
+    try:
+        buffer.seek(0)
+        sent_photo = await context.bot.send_photo(
+            chat_id=chat_id,
+            photo=buffer,
+            caption=f"📊 Анализ: {field_display}\n\nУстройство: {device_human_name}",
+            parse_mode='Markdown'
+        )
+        logger.info(f"[DATA_ANALYZE] График успешно отправлен (message_id={sent_photo.message_id})")
+    except Exception as e:
+        logger.error(f"[DATA_ANALYZE] Ошибка отправки графика: {e}")
+        await query.answer(f"⚠️ Ошибка отправки графика: {e}", show_alert=True)
+        return
+    
+    # 2️⃣ Отправляем НОВОЕ текстовое сообщение с кнопками навигации под графиком
+    logger.info(f"[DATA_ANALYZE] Отправка сообщения с кнопками навигации")
+    nav_keyboard = [
+        [
+            InlineKeyboardButton(text="🔙 Назад к датчикам", callback_data=f"data_fields_{device_id}_{build_id}_p0"),
+            InlineKeyboardButton(text="🔙 Назад к устройствам", callback_data="data_list_p0")
+        ]
+    ]
+    nav_markup = InlineKeyboardMarkup(nav_keyboard)
+    
+    try:
+        nav_message = await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"📈 **Анализ: {field_display}**\n\nВыберите действие:",
+            reply_markup=nav_markup,
+            parse_mode='Markdown',
+            reply_to_message_id=sent_photo.message_id
+        )
+        logger.info(f"[DATA_ANALYZE] Сообщение с кнопками отправлено (message_id={nav_message.message_id})")
+    except Exception as e:
+        logger.error(f"[DATA_ANALYZE] Ошибка отправки сообщения с кнопками: {e}")
+    
+    # 3️⃣ Редактируем ИСХОДНОЕ сообщение: убираем кнопку "📈 Получить анализ", добавляем подтверждение
+    logger.info(f"[DATA_ANALYZE] Редактирование исходного сообщения")
+    try:
+        original_text = query.message.text
+        confirm_text = original_text + "\n\n✅ Анализ сформирован и отправлен выше."
+        
+        # Формируем клавиатуру без кнопки анализа
+        keyboard_without_analyze = [
+            [
+                InlineKeyboardButton(text="📥 Скачать Excel", callback_data=f"data_export_{device_id}_{build_id}_{field_name_encoded}"),
+            ],
+            [
+                InlineKeyboardButton(text="🔙 Назад к датчикам", callback_data=f"data_fields_{device_id}_{build_id}_p0"),
+                InlineKeyboardButton(text="🔙 Назад к устройствам", callback_data="data_list_p0")
+            ]
+        ]
+        updated_markup = InlineKeyboardMarkup(keyboard_without_analyze)
+        
+        await query.edit_message_text(
+            text=confirm_text[:4096],
+            reply_markup=updated_markup
+        )
+        logger.info(f"[DATA_ANALYZE] Исходное сообщение отредактировано")
+    except Exception as e:
+        logger.error(f"[DATA_ANALYZE] Ошибка редактирования исходного сообщения: {e}")
+        # Игнорируем ошибку редактирования - график уже отправлен
+
+
 async def handle_data_back_menu(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
@@ -957,4 +1100,9 @@ def register_data_handlers(application) -> None:
     # Обработчик экспорта в Excel - callback_data: data_export_{device_id}_{build_id}_{field_name}
     application.add_handler(
         CallbackQueryHandler(handle_data_export, pattern=r"^data_export_\d+_\d+_.+$")
+    )
+    
+    # Обработчик анализа данных - callback_data: data_analyze_{device_id}_{build_id}_{field_name}
+    application.add_handler(
+        CallbackQueryHandler(handle_data_analyze, pattern=r"^data_analyze_\d+_\d+_.+$")
     )
