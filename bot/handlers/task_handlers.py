@@ -58,15 +58,15 @@ def get_build_get_fields(database: Database, build_id: int) -> Optional[list[tup
             if isinstance(data, list) and all(isinstance(x, str) for x in data):
                 for cmd in data:
                     commands.append((cmd, cmd))
-            # Формат: массив объектов [{"cmd": "...", "human": "..."}, ...]
+            # Формат: массив объектов [{...}, ...]
             elif isinstance(data, list):
                 for item in data:
-                    if isinstance(item, dict) and "cmd" in item and "human" in item:
-                        commands.append((item["cmd"], item["human"]))
-                    elif isinstance(item, dict):
-                        # Пробуем альтернативные ключи
-                        cmd = item.get("cmd") or item.get("name") or item.get("field") or item.get("key")
-                        human = item.get("human") or item.get("title") or item.get("label") or item.get("name")
+                    if isinstance(item, dict):
+                        # Пробуем разные варианты ключей
+                        # Вариант 1: "cmd" и "human" (старый формат)
+                        cmd = item.get("cmd") or item.get("machine_name") or item.get("name") or item.get("field") or item.get("key")
+                        human = item.get("human") or item.get("human_name") or item.get("title") or item.get("label") or item.get("name")
+                        
                         if cmd and human:
                             commands.append((cmd, human))
                         elif cmd:
