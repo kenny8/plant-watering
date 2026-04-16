@@ -551,7 +551,7 @@ async def handle_task_command_select(
     Обработчик выбора конкретной GET-команды.
     callback_data: task_cmd_val_{device_id}_{build_id}_{cmd_machine}
     
-    Подготовка к Этапу 3 - отображение текущих значений и формы ввода.
+    Показывает кнопки параметров команды из bot_parameters.
     """
     query = update.callback_query
     await query.answer()
@@ -563,11 +563,14 @@ async def handle_task_command_select(
     
     # Парсим device_id, build_id и cmd_machine
     # Формат: task_cmd_val_{device_id}_{build_id}_{cmd_machine}
+    # parts: ["task", "cmd", "val", "{device_id}", "{build_id}", "{cmd_machine}"]
     try:
         parts = data.split('_')
-        device_id = int(parts[2])
-        build_id = int(parts[3])
-        cmd_machine = parts[4]
+        if len(parts) < 6:
+            raise ValueError("Недостаточно частей в callback_data")
+        device_id = int(parts[3])
+        build_id = int(parts[4])
+        cmd_machine = parts[5]
         logger.debug(f"Распарсены параметры: device_id={device_id}, build_id={build_id}, cmd={cmd_machine}")
     except (ValueError, IndexError) as e:
         logger.error(f"Ошибка парсинга callback_data {data}: {e}")
@@ -576,10 +579,14 @@ async def handle_task_command_select(
     
     db: Database = context.bot_data['db']
     
-    # Получаем имя устройства
+    # Получаем имя устройства и get_fields для загрузки bot_parameters
     device_human_name = None
+    command_params = []
+    command_human_name = cmd_machine
+    
     try:
         with db.engine.connect() as conn:
+            # Получаем имя устройства
             result = conn.execute(
                 text("""
                     SELECT device_human_name 
@@ -591,8 +598,38 @@ async def handle_task_command_select(
             row = result.fetchone()
             if row:
                 device_human_name = row[0]
+            
+            # Получаем get_fields для извлечения bot_parameters
+            result = conn.execute(
+                text("SELECT get_fields FROM builds WHERE id = :build_id"),
+                {"build_id": build_id}
+            )
+            row = result.fetchone()
+            if row and row[0]:
+                get_fields_data = row[0]
+                if isinstance(get_fields_data, str):
+                    data_json = json.loads(get_fields_data)
+                else:
+                    data_json = get_fields_data
+                
+                # Ищем нужную команду в списке и извлекаем bot_parameters
+                if isinstance(data_json, list):
+                    for item in data_json:
+                        if isinstance(item, dict):
+                            cmd = item.get("cmd") or item.get("machine_name") or item.get("name")
+                            if cmd == cmd_machine:
+                                command_human_name = item.get("human") or item.get("human_name") or cmd_machine
+                                params = item.get("bot_parameters", [])
+                                if isinstance(params, list):
+                                    for param in params:
+                                        if isinstance(param, dict):
+                                            param_human = param.get("human_name") or param.get("human") or param.get("name")
+                                            param_machine = param.get("machine_name") or param.get("machine") or param.get("value")
+                                            if param_human and param_machine:
+                                                command_params.append((param_machine, param_human))
+                                break
     except Exception as e:
-        logger.error(f"SQL ошибка при получении имени устройства: {e}")
+        logger.error(f"SQL ошибка при получении данных команды: {e}", exc_info=True)
     
     if not device_human_name:
         await query.edit_message_text(
@@ -604,14 +641,37 @@ async def handle_task_command_select(
         )
         return
     
-    # Заглушка для Этапа 3
-    header_text = f"📝 Команда: {cmd_machine}\nУстройство: {device_human_name}\n\nФункционал в разработке (Этап 3)"
+    # Формируем заголовок
+    header_text = f"📝 Команда: {command_human_name}\nУстройство: {device_human_name}\n\nВыберите действие:"
     
-    reply_markup = InlineKeyboardMarkup([[
-        InlineKeyboardButton(text="🔙 Назад к командам", callback_data=f"task_cmd_{device_id}_{build_id}_p0")
-    ], [
-        InlineKeyboardButton(text="🔙 К списку устройств", callback_data="task_list_p1")
-    ]])
+    # Строим клавиатуру с параметрами команды
+    keyboard: list[list[InlineKeyboardButton]] = []
+    
+    if command_params:
+        for param_machine, param_human in command_params:
+            callback_data = f"task_cmd_exec_{device_id}_{build_id}_{cmd_machine}_{param_machine}"
+            keyboard.append([InlineKeyboardButton(
+                text=f"🔹 {param_human}",
+                callback_data=callback_data
+            )])
+    else:
+        # Если нет параметров, показываем сообщение
+        keyboard.append([InlineKeyboardButton(
+            text="⚠️ Нет доступных параметров",
+            callback_data="task_cmd_no_params"
+        )])
+    
+    # Кнопки навигации
+    keyboard.append([InlineKeyboardButton(
+        text="🔙 Назад к командам",
+        callback_data=f"task_cmd_{device_id}_{build_id}_p0"
+    )])
+    keyboard.append([InlineKeyboardButton(
+        text="🔙 К списку устройств",
+        callback_data="task_list_p1"
+    )])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.edit_message_text(
         text=header_text,
