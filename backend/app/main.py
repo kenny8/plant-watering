@@ -235,13 +235,7 @@ async def device_get_endpoint(machine_name: str, device_id: int, db: Session = D
             db.commit()
             print(f"Отправлено команд устройству {device_id}: {result}")
         
-        return {
-            "status": "success",
-            "device_id": device_id,
-            "device_human_name": device.human_name,
-            "build": build.human_name,
-            "commands": result  # Плоский формат для Arduino
-        }
+        return result  # Плоский формат для Arduino: {"light": "on", ...}
         
     except HTTPException as he:
         return {"error": he.detail}
