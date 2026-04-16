@@ -24,6 +24,135 @@ DEVICES_PER_PAGE = 5
 COMMANDS_PER_PAGE = 5
 
 
+def get_build_get_fields(database: Database, build_id: int) -> Optional[list[tuple[str, str]]]:
+    """
+    Получает GET-команды из БД для указанного build_id.
+    
+    Возвращает список кортежей: [(cmd_machine_name, human_name), ...]
+    или None если данные отсутствуют/невалидны.
+    """
+    try:
+        with database.engine.connect() as conn:
+            result = conn.execute(
+                text("SELECT get_fields FROM builds WHERE id = :build_id"),
+                {"build_id": build_id}
+            )
+            row = result.fetchone()
+            if not row or not row[0]:
+                logger.debug(f"get_fields для build_id={build_id} пуст или NULL")
+                return None
+            
+            get_fields_data = row[0]
+            # Парсим JSON
+            if isinstance(get_fields_data, str):
+                data = json.loads(get_fields_data)
+            else:
+                data = get_fields_data
+            
+            commands = []
+            # Формат: массив объектов [{"cmd": "...", "human": "..."}, ...]
+            if isinstance(data, list):
+                for item in data:
+                    if isinstance(item, dict) and "cmd" in item and "human" in item:
+                        commands.append((item["cmd"], item["human"]))
+            # Формат: dict {"cmd1": "human1", "cmd2": "human2"}
+            elif isinstance(data, dict):
+                for cmd, human in data.items():
+                    commands.append((cmd, human))
+            
+            logger.debug(f"Получено {len(commands)} GET-команд для build_id={build_id}")
+            return commands if commands else None
+    except json.JSONDecodeError as e:
+        logger.error(f"Ошибка парсинга JSON get_fields для build_id={build_id}: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Ошибка получения get_fields для build_id={build_id}: {e}")
+        return None
+
+
+def build_commands_keyboard(
+    device_id: int,
+    build_id: int,
+    commands: list[tuple[str, str]],
+    page: int = 0
+) -> tuple[InlineKeyboardMarkup, int]:
+    """
+    Строит inline-клавиатуру с GET-командами для указанной страницы.
+    
+    Args:
+        device_id: ID устройства
+        build_id: ID сборки
+        commands: Список кортежей (cmd_machine_name, human_name)
+        page: Номер текущей страницы (0-indexed)
+    
+    Returns:
+        Кортеж (клавиатура, общее_количество_страниц)
+    """
+    total_commands = len(commands)
+    total_pages = max(1, (total_commands + COMMANDS_PER_PAGE - 1) // COMMANDS_PER_PAGE)
+    
+    # Нормализуем номер страницы
+    page = max(0, min(page, total_pages - 1))
+    
+    start_idx = page * COMMANDS_PER_PAGE
+    end_idx = min(start_idx + COMMANDS_PER_PAGE, total_commands)
+    page_commands = commands[start_idx:end_idx]
+    
+    keyboard: list[list[InlineKeyboardButton]] = []
+    
+    # Кнопки команд - callback_data: task_cmd_val_{device_id}_{build_id}_{cmd_machine}
+    for cmd_machine, human_name in page_commands:
+        callback_data = f"task_cmd_val_{device_id}_{build_id}_{cmd_machine}"
+        keyboard.append([InlineKeyboardButton(
+            text=f"🔹 {human_name}",
+            callback_data=callback_data
+        )])
+    
+    # Кнопки навигации (если страниц больше 1)
+    if total_pages > 1:
+        nav_row: list[InlineKeyboardButton] = []
+        
+        # Кнопка "Назад"
+        if page > 0:
+            nav_row.append(InlineKeyboardButton(
+                text="◀️",
+                callback_data=f"task_cmd_{device_id}_{build_id}_p{page - 1}"
+            ))
+        else:
+            nav_row.append(InlineKeyboardButton(
+                text="·",
+                callback_data=f"task_cmd_{device_id}_{build_id}_p0"
+            ))
+        
+        # Индикатор страницы
+        nav_row.append(InlineKeyboardButton(
+            text=f"{page + 1}/{total_pages}",
+            callback_data="task_cmd_page_info"
+        ))
+        
+        # Кнопка "Вперёд"
+        if page < total_pages - 1:
+            nav_row.append(InlineKeyboardButton(
+                text="▶️",
+                callback_data=f"task_cmd_{device_id}_{build_id}_p{page + 1}"
+            ))
+        else:
+            nav_row.append(InlineKeyboardButton(
+                text="·",
+                callback_data=f"task_cmd_{device_id}_{build_id}_p{page}"
+            ))
+        
+        keyboard.append(nav_row)
+    
+    # Кнопка "Назад к устройствам"
+    keyboard.append([InlineKeyboardButton(
+        text="🔙 Назад к устройствам",
+        callback_data="task_list_p1"
+    )])
+    
+    return InlineKeyboardMarkup(keyboard), total_pages
+
+
 def get_user_devices(database: Database, user_id: int) -> list[tuple[int, int, str]]:
     """
     Получает список устройств пользователя из БД.
@@ -131,9 +260,9 @@ async def handle_tasks_section(
     logger.info(f"[TASKS_SECTION] Пользователь {user_id} открыл раздел 'Задачи'")
     
     description_text = (
-        "📝 **Раздел задач**\\n\\n"
+        "📝 **Раздел задач**\n\n"
         "Здесь вы можете управлять расписанием полива, настройкой автоматических сценариев "
-        "и просматривать журнал выполненных задач.\\n\\n"
+        "и просматривать журнал выполненных задач.\n\n"
         "Выберите устройство для управления задачами:"
     )
     
@@ -144,7 +273,7 @@ async def handle_tasks_section(
     if not devices:
         logger.warning(f"У пользователя {user_id} нет подключённых устройств")
         await update.message.reply_text(
-            description_text + "\\n\\n⚠️ _У вас пока нет подключённых устройств._",
+            description_text + "\n\n⚠️ _У вас пока нет подключённых устройств._",
             parse_mode='Markdown'
         )
         return
@@ -205,9 +334,9 @@ async def handle_tasks_pagination(
     reply_markup, total_pages = build_devices_keyboard(devices, page=page)
     
     description_text = (
-        "📝 **Раздел задач**\\n\\n"
+        "📝 **Раздел задач**\n\n"
         "Здесь вы можете управлять расписанием полива, настройкой автоматических сценариев "
-        "и просматривать журнал выполненных задач.\\n\\n"
+        "и просматривать журнал выполненных задач.\n\n"
         "Выберите устройство для управления задачами:"
     )
     
@@ -228,7 +357,7 @@ async def handle_task_device_select(
     Обработчик выбора конкретного устройства для управления задачами.
     callback_data: task_dev_{device_id}_{build_id}
     
-    Показывает меню задач для выбранного устройства.
+    Загружает GET-команды из БД и показывает их списком.
     """
     query = update.callback_query
     await query.answer()
@@ -278,23 +407,196 @@ async def handle_task_device_select(
             text="⚠️ _Устройство не найдено или ошибка загрузки._",
             parse_mode='Markdown',
             reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton(text="🔙 К списку устройств", callback_data="task_list_p0")
+                InlineKeyboardButton(text="🔙 К списку устройств", callback_data="task_list_p1")
             ]])
         )
         return
     
-    # Формируем меню задач для устройства
-    header_text = f"📝 Задачи: {device_human_name}\\n\\nВыберите действие:"
+    # Загружаем GET-команды из БД
+    commands = get_build_get_fields(db, build_id)
     
-    keyboard = [
-        [InlineKeyboardButton(text="⏰ Расписание полива", callback_data=f"task_schedule_{device_id}_{build_id}")],
-        [InlineKeyboardButton(text="🔄 Автоматические сценарии", callback_data=f"task_auto_{device_id}_{build_id}")],
-        [InlineKeyboardButton(text="📋 Журнал задач", callback_data=f"task_log_{device_id}_{build_id}")],
-        [InlineKeyboardButton(text="🔙 К списку устройств", callback_data="task_list_p0")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    if not commands:
+        # FALLBACK: если get_fields пуст/NULL
+        logger.warning(f"Для build_id={build_id} нет GET-команд")
+        header_text = f"📝 Задачи: {device_human_name}\n\n⚠️ Для этого устройства GET-команды не настроены."
+        reply_markup = InlineKeyboardMarkup([[
+            InlineKeyboardButton(text="🔙 Назад к устройствам", callback_data="task_list_p1")
+        ]])
+        await query.edit_message_text(
+            text=header_text,
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
+        return
     
-    logger.info(f"Отправка меню задач для устройства {device_human_name}")
+    # Формируем заголовок и клавиатуру с командами (первая страница)
+    header_text = f"📝 Задачи: {device_human_name}\nВыберите команду:"
+    reply_markup, _ = build_commands_keyboard(device_id, build_id, commands, page=0)
+    
+    logger.info(f"Отправка списка команд ({len(commands)} шт.) для устройства {device_human_name}")
+    await query.edit_message_text(
+        text=header_text,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+
+async def handle_commands_pagination(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """
+    Обработчик пагинации списка GET-команд (стрелки < >).
+    callback_data: task_cmd_{device_id}_{build_id}_p{page}
+    """
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    data = query.data
+    
+    logger.debug(f"[COMMANDS_PAGINATION] Получен callback: {data} от user_id={user_id}")
+    
+    # Парсим device_id, build_id и номер страницы
+    # Формат: task_cmd_{device_id}_{build_id}_p{page}
+    try:
+        parts = data.split('_')
+        device_id = int(parts[2])
+        build_id = int(parts[3])
+        page = int(parts[4].replace('p', ''))
+        logger.debug(f"Распарсены параметры: device_id={device_id}, build_id={build_id}, page={page}")
+    except (ValueError, IndexError) as e:
+        logger.error(f"Ошибка парсинга callback_data {data}: {e}")
+        page = 0
+        device_id = 0
+        build_id = 0
+    
+    db: Database = context.bot_data['db']
+    
+    # Получаем имя устройства
+    device_human_name = None
+    try:
+        with db.engine.connect() as conn:
+            result = conn.execute(
+                text("""
+                    SELECT device_human_name 
+                    FROM user_devices 
+                    WHERE user_id = :user_id AND device_id = :device_id AND build_id = :build_id
+                """),
+                {"user_id": user_id, "device_id": device_id, "build_id": build_id}
+            )
+            row = result.fetchone()
+            if row:
+                device_human_name = row[0]
+    except Exception as e:
+        logger.error(f"SQL ошибка при получении имени устройства: {e}")
+    
+    if not device_human_name:
+        await query.edit_message_text(
+            text="⚠️ _Ошибка загрузки устройства._",
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton(text="🔙 К списку устройств", callback_data="task_list_p1")
+            ]])
+        )
+        return
+    
+    # Загружаем команды
+    commands = get_build_get_fields(db, build_id)
+    
+    if not commands:
+        header_text = f"📝 Задачи: {device_human_name}\n\n⚠️ Для этого устройства GET-команды не настроены."
+        reply_markup = InlineKeyboardMarkup([[
+            InlineKeyboardButton(text="🔙 Назад к устройствам", callback_data="task_list_p1")
+        ]])
+        await query.edit_message_text(
+            text=header_text,
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
+        return
+    
+    # Строим клавиатуру для запрошенной страницы
+    header_text = f"📝 Задачи: {device_human_name}\nВыберите команду:"
+    reply_markup, total_pages = build_commands_keyboard(device_id, build_id, commands, page=page)
+    
+    logger.debug(f"Пагинация команд: страница {page + 1}/{total_pages}")
+    
+    await query.edit_message_text(
+        text=header_text,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+
+async def handle_task_command_select(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """
+    Обработчик выбора конкретной GET-команды.
+    callback_data: task_cmd_val_{device_id}_{build_id}_{cmd_machine}
+    
+    Подготовка к Этапу 3 - отображение текущих значений и формы ввода.
+    """
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    user_id = query.from_user.id
+    
+    logger.info(f"[TASK_COMMAND_SELECT] Получен callback: {data} от user_id={user_id}")
+    
+    # Парсим device_id, build_id и cmd_machine
+    # Формат: task_cmd_val_{device_id}_{build_id}_{cmd_machine}
+    try:
+        parts = data.split('_')
+        device_id = int(parts[2])
+        build_id = int(parts[3])
+        cmd_machine = parts[4]
+        logger.debug(f"Распарсены параметры: device_id={device_id}, build_id={build_id}, cmd={cmd_machine}")
+    except (ValueError, IndexError) as e:
+        logger.error(f"Ошибка парсинга callback_data {data}: {e}")
+        await query.answer("⚠️ Ошибка: неверный формат команды", show_alert=True)
+        return
+    
+    db: Database = context.bot_data['db']
+    
+    # Получаем имя устройства
+    device_human_name = None
+    try:
+        with db.engine.connect() as conn:
+            result = conn.execute(
+                text("""
+                    SELECT device_human_name 
+                    FROM user_devices 
+                    WHERE user_id = :user_id AND device_id = :device_id AND build_id = :build_id
+                """),
+                {"user_id": user_id, "device_id": device_id, "build_id": build_id}
+            )
+            row = result.fetchone()
+            if row:
+                device_human_name = row[0]
+    except Exception as e:
+        logger.error(f"SQL ошибка при получении имени устройства: {e}")
+    
+    if not device_human_name:
+        await query.edit_message_text(
+            text="⚠️ _Ошибка загрузки устройства._",
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton(text="🔙 К списку устройств", callback_data="task_list_p1")
+            ]])
+        )
+        return
+    
+    # Заглушка для Этапа 3
+    header_text = f"📝 Команда: {cmd_machine}\nУстройство: {device_human_name}\n\nФункционал в разработке (Этап 3)"
+    
+    reply_markup = InlineKeyboardMarkup([[
+        InlineKeyboardButton(text="🔙 Назад к командам", callback_data=f"task_cmd_{device_id}_{build_id}_p0")
+    ], [
+        InlineKeyboardButton(text="🔙 К списку устройств", callback_data="task_list_p1")
+    ]])
+    
     await query.edit_message_text(
         text=header_text,
         reply_markup=reply_markup,
@@ -319,4 +621,14 @@ def register_task_handlers(application) -> None:
     # Обработчик выбора устройства - callback_data: task_dev_{device_id}_{build_id}
     application.add_handler(
         CallbackQueryHandler(handle_task_device_select, pattern=r"^task_dev_\d+_\d+$")
+    )
+    
+    # Обработчик пагинации GET-команд - callback_data: task_cmd_{device_id}_{build_id}_p{page}
+    application.add_handler(
+        CallbackQueryHandler(handle_commands_pagination, pattern=r"^task_cmd_\d+_\d+_p\d+$")
+    )
+    
+    # Обработчик выбора GET-команды - callback_data: task_cmd_val_{device_id}_{build_id}_{cmd_machine}
+    application.add_handler(
+        CallbackQueryHandler(handle_task_command_select, pattern=r"^task_cmd_val_\d+_\d+_.+$")
     )
