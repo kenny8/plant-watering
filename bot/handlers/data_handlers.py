@@ -593,22 +593,29 @@ async def handle_fields_pagination(
     )
 
 
+
 async def handle_field_select(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
     """
     Обработчик выбора конкретного поля (датчика).
     callback_data: data_field_{device_id}_{build_id}_{field_name}
-    Подготовка для Этапа 3 (отображение данных датчика).
+    
+    Этап 3: Вывод последних 20 показаний датчика.
+    - Заголовок: 📊 Показание: {field_name} (_ → пробелы, первая буква заглавная)
+    - Запрос в БД: SELECT field_value, created_at FROM device_data WHERE device_id=? AND build_id=? AND field_name=? ORDER BY created_at DESC LIMIT 20
+    - Формат: 🕒 {DD.MM.YYYY, HH:MM:SS} | 📏 {field_value}
+    - Лимит Telegram: 4096 символов, обрезка с предупреждением если превышено
+    - Кнопки: 🔙 Назад к датчикам, 🔙 Назад к устройствам
     """
     query = update.callback_query
     await query.answer()
-    
+
     data = query.data
     user_id = query.from_user.id
-    
+
     logger.info(f"[FIELD_SELECT] Получен callback: {data} от user_id={user_id}")
-    
+
     # Парсим device_id, build_id и field_name из callback_data
     # Формат: data_field_{device_id}_{build_id}_{field_name}
     try:
@@ -619,23 +626,24 @@ async def handle_field_select(
         remaining_parts = remaining.split('_', 1)
         build_id = int(remaining_parts[0])
         field_name_encoded = remaining_parts[1] if len(remaining_parts) > 1 else ""
-        # Восстанавливаем исходное имя поля (заменяем _ обратно на пробелы и т.д.)
+        # Восстанавливаем исходное имя поля (заменяем _ обратно на пробелы)
         field_name = field_name_encoded.replace("_", " ")
         logger.debug(f"Распарсены параметры: device_id={device_id}, build_id={build_id}, field_name='{field_name}'")
     except (ValueError, IndexError) as e:
         logger.error(f"Ошибка парсинга callback_data для поля: {e}")
         await query.answer("⚠️ Ошибка: неверный формат данных", show_alert=True)
         return
-    
+
+    db: Database = context.bot_data['db']
+
     # Получаем human_name устройства для отображения
     device_human_name = None
     try:
-        db: Database = context.bot_data['db']
         with db.engine.connect() as conn:
             result = conn.execute(
                 text("""
-                    SELECT device_human_name 
-                    FROM user_devices 
+                    SELECT device_human_name
+                    FROM user_devices
                     WHERE user_id = :user_id AND device_id = :device_id AND build_id = :build_id
                 """),
                 {"user_id": user_id, "device_id": device_id, "build_id": build_id}
@@ -643,27 +651,119 @@ async def handle_field_select(
             row = result.fetchone()
             if row:
                 device_human_name = row[0]
+                logger.debug(f"Устройство найдено: human_name='{device_human_name}'")
     except Exception as e:
         logger.error(f"Ошибка получения имени устройства: {e}")
-    
+
     display_name = device_human_name if device_human_name else f"Устройство #{device_id}"
+
+    # Форматируем имя поля для заголовка: заменяем _ на пробелы, первую букву заглавной
+    # Для каждого слова делаем первую букву заглавной
+    field_display = " ".join(word.capitalize() for word in field_name.split())
+    logger.debug(f"Отображаемое имя поля: '{field_display}'")
+
+    # Запрос в БД: последние 20 записей для device_id, build_id, field_name
+    logger.info(f"Выполнение SQL-запроса для device_id={device_id}, build_id={build_id}, field_name='{field_name}'")
+    readings = []
+    total_count = 0
+    try:
+        with db.engine.connect() as conn:
+            # Сначала получаем общее количество записей
+            count_result = conn.execute(
+                text("""
+                    SELECT COUNT(*) 
+                    FROM device_data 
+                    WHERE device_id = :device_id AND build_id = :build_id AND field_name = :field_name
+                """),
+                {"device_id": device_id, "build_id": build_id, "field_name": field_name}
+            )
+            total_count = count_result.scalar() or 0
+            logger.debug(f"Общее количество записей в БД: {total_count}")
+
+            # Получаем последние 20 записей
+            result = conn.execute(
+                text("""
+                    SELECT field_value, created_at 
+                    FROM device_data 
+                    WHERE device_id = :device_id AND build_id = :build_id AND field_name = :field_name
+                    ORDER BY created_at DESC
+                    LIMIT 20
+                """),
+                {"device_id": device_id, "build_id": build_id, "field_name": field_name}
+            )
+            rows = result.fetchall()
+            readings = [(row[0], row[1]) for row in rows]
+            logger.info(f"Получено {len(readings)} записей из БД")
+    except Exception as e:
+        logger.error(f"Ошибка выполнения SQL-запроса: {e}")
+        await query.edit_message_text(
+            text=f"⚠️ _Ошибка загрузки данных: {e}_",
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton(text="🔙 Назад к датчикам", callback_data=f"data_fields_{device_id}_{build_id}_p0"),
+                InlineKeyboardButton(text="🔙 Назад к устройствам", callback_data="data_list_p0")
+            ]])
+        )
+        return
+
+    # Формируем текст сообщения
+    header_text = f"📊 Показание: {field_display}\n\n"
     
-    # Пока выводим заглушку (Этап 3 будет реализован отдельно)
+    if not readings:
+        logger.warning(f"Нет записей для field_name='{field_name}', device_id={device_id}, build_id={build_id}")
+        message_text = header_text + "📭 Записей пока нет"
+    else:
+        lines = []
+        for field_value, created_at in readings:
+            # Форматируем дату: DD.MM.YYYY, HH:MM:SS
+            try:
+                date_str = created_at.strftime("%d.%m.%Y, %H:%M:%S") if created_at else "N/A"
+            except AttributeError:
+                # Если created_at уже строка
+                date_str = str(created_at)[:19] if created_at else "N/A"
+            
+            # Форматируем значение
+            value_str = str(field_value) if field_value is not None else "N/A"
+            lines.append(f"🕒 {date_str} | 📏 {value_str}")
+        
+        # Проверяем лимит Telegram (4096 символов)
+        base_text = header_text + "\n".join(lines)
+        logger.debug(f"Длина текста до проверки лимита: {len(base_text)} символов")
+        
+        if len(base_text) > 4096:
+            # Обрезаем список до безопасного количества строк
+            max_lines = 0
+            for i in range(len(lines), 0, -1):
+                test_text = header_text + "\n".join(lines[:i])
+                if len(test_text) <= 4096:
+                    max_lines = i
+                    break
+            
+            # Добавляем предупреждение
+            lines = lines[:max_lines]
+            warning_text = f"\n\n⚠️ Показано {len(lines)} из {len(readings)} записей"
+            final_text = header_text + "\n".join(lines) + warning_text
+            logger.info(f"Текст обрезан: показано {len(lines)} из {len(readings)} записей (лимит 4096)")
+            message_text = final_text
+        else:
+            message_text = base_text
+            logger.debug(f"Текст помещается в лимит: {len(message_text)} символов")
+
+    # Формируем клавиатуру
+    keyboard = [
+        [
+            InlineKeyboardButton(text="🔙 Назад к датчикам", callback_data=f"data_fields_{device_id}_{build_id}_p0"),
+            InlineKeyboardButton(text="🔙 Назад к устройствам", callback_data="data_list_p0")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    logger.info(f"Отправка edit_message_text с показаниями датчика ({len(message_text)} символов)")
+    
+    # Редактируем сообщение
     await query.edit_message_text(
-        text=(
-            f"📈 **Поле: {field_name}**\n"
-            f"📱 Устройство: {display_name}\n\n"
-            f"_machine_name_: device_id={device_id}, build_id={build_id}\n\n"
-            "Здесь будет отображаться:\n"
-            "• График значений\n"
-            "• Статистика (мин/макс/среднее)\n"
-            "• Последние показания\n\n"
-            "_Функционал в разработке (Этап 3)._ "
-        ),
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton(text="🔙 Назад к списку полей", callback_data=f"data_fields_{device_id}_{build_id}_p0")],
-            [InlineKeyboardButton(text="🔙 К списку устройств", callback_data="data_list_p0")]
-        ]),
+        text=message_text,
+        reply_markup=reply_markup,
         parse_mode='Markdown'
     )
 
