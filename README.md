@@ -175,8 +175,10 @@ Web Browser → Nginx → Frontend Static → Backend API → Database
 | `handlers/data_handlers.py` | | | | | |
 | `handle_data_list` | callback_query | pattern: `^data_list_p\d+` | Пагинация списка устройств пользователя | InlineKeyboard: устройства, ◀️, ▶️ | Database → user_devices, devices |
 | `handle_device_select` | callback_query | pattern: `^data_dev_\d+_\d+` | Загрузка датчиков устройства | Заголовок + список датчиков (пагинация) | Database → builds.post_fields, device_data |
-| `handle_field_select` | callback_query | pattern: `^data_field_\d+_\d+_.+` | Получение последних 20 показаний датчика | Текст: 🕒 timestamp \| 📏 value (список) | Database → device_data |
+| `handle_field_select` | callback_query | pattern: `^data_field_\d+_\d+_.+` | Получение последних 20 показаний датчика | Текст: 🕒 timestamp \| 📏 value (список) + кнопки Excel/Анализ | Database → device_data |
 | `handle_fields_pagination` | callback_query | pattern: `^data_fields_\d+_\d+_p\d+` | Пагинация списка датчиков | InlineKeyboard: датчики, ◀️, ▶️, 🔙 | Database → builds.post_fields, device_data |
+| `handle_data_excel` | callback_query | pattern: `^data_excel_\d+_\d+_.+` | Генерация и отправка Excel-файла | Файл .xlsx + сообщение с кнопками навигации | Database → device_data |
+| `handle_data_analyze` | callback_query | pattern: `^data_analyze_\d+_\d+_.+` | Генерация графика анализа | send_photo() с графиком + edit_message_text() исходного | Database → device_data, utils.data_charts.generate_analysis_chart() |
 
 ### 2.4 Кнопки
 
@@ -213,6 +215,8 @@ Web Browser → Nginx → Frontend Static → Backend API → Database
 | `◀️ {field_name}` | Inline | `data_fields_{device_id}_{build_id}_p{page}` | Пагинация списка датчиков (страница влево) | Нет |
 | `▶️ {field_name}` | Inline | `data_fields_{device_id}_{build_id}_p{page}` | Пагинация списка датчиков (страница вправо) | Нет |
 | `📏 {field_name}` | Inline | `data_field_{device_id}_{build_id}_{field_name}` | Просмотр показаний выбранного датчика | Нет |
+| `📥 Скачать Excel` | Inline | `data_excel_{device_id}_{build_id}_{field_name}` | Скачивание Excel-файла с данными датчика | Нет |
+| `📈 Получить анализ` | Inline | `data_analyze_{device_id}_{build_id}_{field_name}` | Генерация и отправка графика анализа | Нет |
 | `🔙 Назад к датчикам` | Inline | `data_fields_{device_id}_{build_id}_p1` | Возврат к списку датчиков | Нет |
 | `🔙 Назад к устройствам` | Inline | `data_list_p1` | Возврат к списку устройств | Нет |
 | `◀️` | Inline | `data_list_p{page}` | Пагинация списка устройств (страница влево) | Нет |
@@ -240,7 +244,32 @@ Callback: data_dev_{device_id}_{build_id}
 User → Клик по датчику → Последние 20 записей
 Callback: data_field_{device_id}_{build_id}_{field_name}
 Формат: 🕒 {DD.MM.YYYY, HH:MM:SS} | 📏 {field_value}
-Кнопки: 🔙 Назад к датчикам, 🔙 Назад к устройствам
+Кнопки: [["📥 Скачать Excel", "📈 Получить анализ"], ["🔙 Назад к датчикам", "🔙 Назад к устройствам"]]
+```
+
+**Этап 4: Скачивание Excel**
+```
+User → Клик по "📥 Скачать Excel" → Файл Excel с данными
+Callback: data_excel_{device_id}_{build_id}_{field_name}
+Формат файла: .xlsx с колонками [created_at, field_value]
+Кнопки: 🔙 Назад к датчикам, 🔙 Назад к устройствам (в новом сообщении)
+```
+
+**Этап 5: Аналитика с графиками**
+```
+User → Клик по "📈 Получить анализ" → График + статистика
+Callback: data_analyze_{device_id}_{build_id}_{field_name}
+Генерация: bot/utils/data_charts.py → matplotlib (линейный график в BytesIO)
+Период агрегации: Авто-определение (day/week/month/quarter/year) по диапазону данных
+Агрегация SQL: GROUP BY DATE/YEARWEEK/DATE_FORMAT/QUARTER/YEAR + AVG(field_value)
+Отправка: 
+  1. send_photo() — новое сообщение с изображением графика
+  2. send_message() — новое сообщение с кнопками навигации
+  3. edit_message_text() — редактирование исходного сообщения (добавление "✅ Анализ сформирован")
+Обработка малых данных: Если после агрегации < 2 точек → строится детальный график по всем записям без группировки
+Недостаточно данных: Если всего < 2 записей → изображение с текстом "📭 Недостаточно данных для построения графика"
+Визуализация: Линейный график с осями "Дата" / "Значение {field_name}", заголовок "{human_name} — {period}", сетка, шрифт Roboto
+Логирование: [CHARTS] на каждом шаге (запрос SQL, агрегация, генерация, отправка)
 ```
 
 ### 2.5 Машина состояний (FSM)
@@ -269,7 +298,7 @@ user_states = {}  # user_id -> {'state': 'waiting_for_device_id'}
 **Фильтры**:
 - `filters.Text(["⚙️ Настройки"])` — фильтр по тексту для Reply-кнопок
 - `filters.TEXT & ~filters.COMMAND` — ловит все текстовые сообщения кроме команд
-- `pattern="^menu_"`, `pattern="^device_"` — regex фильтры для callback_query
+- `pattern="^menu_"`, `pattern="^device_"`, `pattern="^data_"` — regex фильтры для callback_query
 
 **Rate-limit**: [TODO: не реализовано]
 
@@ -712,7 +741,7 @@ docker-compose down -v
 | `bot/handlers/` | Обработчики команд и callback'ов Telegram |
 | `bot/services/` | Бизнес-логика (устройства, настройки, уведомления) |
 | `bot/models/` | SQLAlchemy модели данных |
-| `bot/utils/` | Утилиты (конфиг, логгер) |
+| `bot/utils/` | Утилиты (конфиг, логгер, генерация графиков data_charts.py) |
 | `frontend/build/` | Готовые к деплою статические файлы |
 | `nginx/` | Конфигурация reverse proxy |
 
@@ -753,7 +782,8 @@ docker-compose down -v
 | `python-telegram-bot` | 22.0 | Telegram Bot API | Bot |
 | `sqlalchemy` | 2.0.30 | ORM | Backend, Bot |
 | `pymysql` | 1.1.0 | MySQL driver | Backend, Bot |
-| `matplotlib` | 3.8.4 | Графики (для будущего использования) | Bot |
+| `matplotlib` | 3.8.4 | Генерация графиков аналитики (data_charts.py) | Bot |
+| `openpyxl` | 3.1.2 | Генерация Excel-файлов | Bot |
 
 #### Frontend (CDN)
 
