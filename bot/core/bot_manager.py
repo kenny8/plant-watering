@@ -10,11 +10,14 @@ from handlers.menu_handlers import (
     start_command,
     handle_main_menu,
     handle_menu_callback,
-    handle_tasks_section
 )
 from handlers.data_handlers import (
     register_data_handlers,
     handle_data_section
+)
+from handlers.task_handlers import (
+    register_task_handlers,
+    handle_tasks_section as handle_tasks_section_impl
 )
 from handlers.device_handlers import (
     devices_list_command,  # ИЗМЕНЕНО: devices_command -> devices_list_command
@@ -106,11 +109,14 @@ class BotManager:
     
         # Обработчики кнопок главного меню
         self.application.add_handler(MessageHandler(filters.Text(["📊 Данные"]), handle_data_section))
-        self.application.add_handler(MessageHandler(filters.Text(["📝 Задачи"]), handle_tasks_section))
+        self.application.add_handler(MessageHandler(filters.Text(["📝 Задачи"]), handle_tasks_section_impl))
         self.application.add_handler(MessageHandler(filters.Text(["⚙️ Настройки"]), handle_main_menu))
     
         # Регистрируем обработчики раздела "📊 Данные" (пагинация, выбор устройства)
         register_data_handlers(self.application)
+        
+        # Регистрируем обработчики раздела "📝 Задачи" (пагинация, выбор устройства)
+        register_task_handlers(self.application)
     
         # Callback обработчики для inline меню
         self.application.add_handler(CallbackQueryHandler(handle_menu_callback, pattern="^menu_"))
