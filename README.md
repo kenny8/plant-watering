@@ -172,6 +172,11 @@ Web Browser → Nginx → Frontend Static → Backend API → Database
 | `start_notifications_command` | command | Update, Context | Включение уведомлений | Подтверждение | NotificationService → БД |
 | `stop_notifications_command` | command | Update, Context | Выключение уведомлений | Подтверждение | NotificationService → БД |
 | `test_notification_command` | command | Update, Context | Отправка тестового сообщения | Тестовое уведомление | NotificationService → БД |
+| `handlers/data_handlers.py` | | | | | |
+| `handle_data_list` | callback_query | pattern: `^data_list_p\d+` | Пагинация списка устройств пользователя | InlineKeyboard: устройства, ◀️, ▶️ | Database → user_devices, devices |
+| `handle_device_select` | callback_query | pattern: `^data_dev_\d+_\d+` | Загрузка датчиков устройства | Заголовок + список датчиков (пагинация) | Database → builds.post_fields, device_data |
+| `handle_field_select` | callback_query | pattern: `^data_field_\d+_\d+_.+` | Получение последних 20 показаний датчика | Текст: 🕒 timestamp \| 📏 value (список) | Database → device_data |
+| `handle_fields_pagination` | callback_query | pattern: `^data_fields_\d+_\d+_p\d+` | Пагинация списка датчиков | InlineKeyboard: датчики, ◀️, ▶️, 🔙 | Database → builds.post_fields, device_data |
 
 ### 2.4 Кнопки
 
@@ -189,7 +194,7 @@ Web Browser → Nginx → Frontend Static → Backend API → Database
  ["⚙️ Настройки"]]
 ```
 
-#### Inline-кнопки (меню настроек и устройства)
+#### Inline-кнопки (меню настроек, устройства и навигация по данным)
 
 | Текст | Тип | Callback_data | Действие при нажатии | Изменяет состояние FSM? |
 |-------|-----|---------------|----------------------|-------------------------|
@@ -204,6 +209,39 @@ Web Browser → Nginx → Frontend Static → Backend API → Database
 | `📱 {device_name}` | Inline | `device_info_{id}` | Показ информации об устройстве | Нет |
 | `🗑️ {device_name}` | Inline | `device_confirm_remove_{id}` | Подтверждение удаления | Нет |
 | `❌ Отмена` | Inline | `cancel_add_device`, `cancel_remove` | Отмена операции, очистка FSM | Да (сброс state) |
+| `📊 {device_human_name}` | Inline | `data_dev_{device_id}_{build_id}` | Переход к выбору датчиков устройства | Нет |
+| `◀️ {field_name}` | Inline | `data_fields_{device_id}_{build_id}_p{page}` | Пагинация списка датчиков (страница влево) | Нет |
+| `▶️ {field_name}` | Inline | `data_fields_{device_id}_{build_id}_p{page}` | Пагинация списка датчиков (страница вправо) | Нет |
+| `📏 {field_name}` | Inline | `data_field_{device_id}_{build_id}_{field_name}` | Просмотр показаний выбранного датчика | Нет |
+| `🔙 Назад к датчикам` | Inline | `data_fields_{device_id}_{build_id}_p1` | Возврат к списку датчиков | Нет |
+| `🔙 Назад к устройствам` | Inline | `data_list_p1` | Возврат к списку устройств | Нет |
+| `◀️` | Inline | `data_list_p{page}` | Пагинация списка устройств (страница влево) | Нет |
+| `▶️` | Inline | `data_list_p{page}` | Пагинация списка устройств (страница вправо) | Нет |
+
+### 2.4.1 Навигация по разделу "Данные" (Data Flow)
+
+**Этап 1: Список устройств**
+```
+User → /start или "📊 Данные" → Список устройств (пагинация)
+Callback: data_list_p{page}
+Кнопки: 📊 {device_human_name}, ◀️, ▶️
+```
+
+**Этап 2: Выбор датчиков устройства**
+```
+User → Клик по устройству → Список датчиков (пагинация)
+Callback: data_dev_{device_id}_{build_id}
+Источник данных: builds.post_fields (JSON) → fallback → device_data.field_name
+Кнопки: 📏 {field_name}, ◀️, ▶️, 🔙 Назад к устройствам
+```
+
+**Этап 3: Показания датчика**
+```
+User → Клик по датчику → Последние 20 записей
+Callback: data_field_{device_id}_{build_id}_{field_name}
+Формат: 🕒 {DD.MM.YYYY, HH:MM:SS} | 📏 {field_value}
+Кнопки: 🔙 Назад к датчикам, 🔙 Назад к устройствам
+```
 
 ### 2.5 Машина состояний (FSM)
 
@@ -762,4 +800,4 @@ docker-compose down -v
 
 ---
 
-*Документ сгенерирован на основе анализа исходного кода репозитория. Последнее обновление: [AUTO-GENERATED]*
+*Документ сгенерирован на основе анализа исходного кода репозитория. Последнее обновление: 16.04.2026, 01:22 (добавлена документация по разделу "Данные" — этапы 1-3)*
