@@ -10,8 +10,8 @@ from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 from sqlalchemy import text
 
-from core.database import Database
-from utils.logger import setup_logger
+from bot.core.database import Database
+from bot.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
@@ -50,10 +50,10 @@ def generate_excel_buffer(
     ws = wb.active
     ws.title = "Показания"[:31]  # Лимит имени листа в Excel
     
-    # Заголовок документа
-    field_display = " ".join(word.capitalize() for word in field_name.split())
+    # Заголовок документа (без иконки)
+    field_display = " ".join(word.capitalize() for word in field_name.replace('_', ' ').split())
     ws.merge_cells('A1:B1')
-    ws['A1'] = f"📊 Показания: {field_display}"
+    ws['A1'] = f"Показания: {field_display}"
     ws['A1'].font = ws['A1'].font.copy(bold=True, size=14)
     ws['A1'].alignment = ws['A1'].alignment.copy(horizontal='center')
     
