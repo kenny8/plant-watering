@@ -3,6 +3,7 @@
 Реализация пагинации списка устройств пользователя и выбора задач.
 """
 from typing import Optional
+import json
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -20,6 +21,7 @@ logger = setup_logger(__name__)
 
 # Константы пагинации
 DEVICES_PER_PAGE = 5
+COMMANDS_PER_PAGE = 5
 
 
 def get_user_devices(database: Database, user_id: int) -> list[tuple[int, int, str]]:
