@@ -3,6 +3,7 @@ import signal
 from utils.config import Config
 from utils.logger import setup_logger
 from core.bot_manager import BotManager
+from services.db_migrations import run_migrations
 
 # Настраиваем логгер с DEBUG уровнем
 logger = setup_logger(__name__, "DEBUG")
@@ -40,6 +41,11 @@ async def main():
         
         logger.info(f"📊 Config loaded - DB: {db_url.split('@')[1] if '@' in db_url else '***'}")
         logger.info(f"📊 Token check interval: {check_interval}s")
+        
+        # Выполняем миграции базы данных перед запуском
+        logger.info("🗄️ Running database migrations...")
+        run_migrations()
+        logger.info("✅ Database migrations completed")
         
         # Создаем менеджер бота
         bot_manager = BotManager(db_url, check_interval)

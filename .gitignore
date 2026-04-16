@@ -1,1 +1,1 @@
-Nothing should be ignored in this case, as only a source code file (`backend/app/main.py`) was modified and there are no build artifacts, dependencies, or temporary files in the changes.
+Nothing needs to be added to the .gitignore file based on the provided changes, as they only include Python source files (.py) which should not be ignored.

@@ -739,25 +739,7 @@ async def handle_task_command_execution(
     # Записываем команду в таблицу device_commands
     try:
         with db.engine.connect() as conn:
-            # Проверяем существование таблицы device_commands, создаём если нет
-            conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS `device_commands` (
-                  `id` int(11) NOT NULL AUTO_INCREMENT,
-                  `device_id` int(11) NOT NULL,
-                  `command` varchar(255) NOT NULL,
-                  `value` varchar(255) NOT NULL,
-                  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-                  `is_executed` tinyint(1) DEFAULT 0,
-                  `user_id` int(11) DEFAULT NULL,
-                  `chat_id` bigint(20) DEFAULT NULL,
-                  PRIMARY KEY (`id`),
-                  KEY `device_id` (`device_id`),
-                  CONSTRAINT `device_commands_ibfk_1` FOREIGN KEY (`device_id`) REFERENCES `devices` (`id`)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
-            """))
-            conn.commit()
-            
-            # Вставляем новую команду
+            # Вставляем новую команду (таблица уже создана миграцией при старте)
             conn.execute(
                 text("""
                     INSERT INTO device_commands (device_id, command, value, is_executed, user_id, chat_id)
