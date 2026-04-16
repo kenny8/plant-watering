@@ -669,24 +669,28 @@ async def handle_field_select(
     total_count = 0
     try:
         with db.engine.connect() as conn:
-            # Сначала получаем общее количество записей
+            # Сначала получаем общее количество записей - СТРОГО по тройке ключей
             count_result = conn.execute(
                 text("""
                     SELECT COUNT(*) 
                     FROM device_data 
-                    WHERE device_id = :device_id AND build_id = :build_id AND field_name = :field_name
+                    WHERE device_id = :device_id 
+                      AND build_id = :build_id 
+                      AND field_name = :field_name
                 """),
                 {"device_id": device_id, "build_id": build_id, "field_name": field_name}
             )
             total_count = count_result.scalar() or 0
-            logger.debug(f"Общее количество записей в БД: {total_count}")
+            logger.debug(f"Общее количество записей в БД (строго по device_id={device_id}, build_id={build_id}, field='{field_name}'): {total_count}")
 
-            # Получаем последние 20 записей
+            # Получаем последние 20 записей - СТРОГО по тройке ключей
             result = conn.execute(
                 text("""
                     SELECT field_value, created_at 
                     FROM device_data 
-                    WHERE device_id = :device_id AND build_id = :build_id AND field_name = :field_name
+                    WHERE device_id = :device_id 
+                      AND build_id = :build_id 
+                      AND field_name = :field_name
                     ORDER BY created_at DESC
                     LIMIT 20
                 """),
@@ -694,7 +698,7 @@ async def handle_field_select(
             )
             rows = result.fetchall()
             readings = [(row[0], row[1]) for row in rows]
-            logger.info(f"Получено {len(readings)} записей из БД")
+            logger.info(f"Получено {len(readings)} записей из БД (всего в БД: {total_count})")
     except Exception as e:
         logger.error(f"Ошибка выполнения SQL-запроса: {e}")
         await query.edit_message_text(

@@ -67,7 +67,8 @@ def generate_excel_buffer(
         ws[cell].font = ws[cell].font.copy(bold=True)
         ws[cell].alignment = ws[cell].alignment.copy(horizontal='center')
     
-    # Получаем данные из БД - СТРОГО по device_id, build_id, field_name
+    # Получаем данные из БД - СТРОГО по device_id, build_id, field_name (без проверки user_id внутри)
+    # Проверка прав пользователя уже выполнена в handle_data_export перед вызовом этой функции
     readings = []
     try:
         query = text("""
