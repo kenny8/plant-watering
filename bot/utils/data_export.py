@@ -10,8 +10,8 @@ from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 from sqlalchemy import text
 
-from bot.core.database import Database
-from bot.utils.logger import setup_logger
+from core.database import Database
+from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
