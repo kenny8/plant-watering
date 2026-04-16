@@ -688,12 +688,14 @@ async def handle_task_command_execution(
     callback_data: task_cmd_exec_{device_id}_{build_id}_{cmd_machine}_{value_machine}
     
     Записывает команду в таблицу device_commands в БД.
+    Если у пользователя включены уведомления - отправляет уведомление о выполнении.
     """
     query = update.callback_query
     await query.answer()
     
     data = query.data
     user_id = query.from_user.id
+    chat_id = query.message.chat_id
     
     logger.info(f"[TASK_COMMAND_EXEC] Получен callback: {data} от user_id={user_id}")
     
@@ -714,6 +716,7 @@ async def handle_task_command_execution(
         return
     
     db: Database = context.bot_data['db']
+    notification_service = context.bot_data.get('notification_service')
     
     # Получаем имя устройства для отображения
     device_human_name = None
@@ -785,6 +788,34 @@ async def handle_task_command_execution(
             parse_mode='Markdown'
         )
         
+        # Отправляем уведомление если включено
+        if notification_service:
+            try:
+                notifications_enabled = await notification_service.get_user_notification_status(user_id, chat_id)
+                if notifications_enabled:
+                    notification_text = (
+                        f"✅ _Команда выполнена!_\n\n"
+                        f"📱 Устройство: {device_human_name or 'Неизвестно'}\n"
+                        f"⚙️ Команда: `{cmd_machine}`\n"
+                        f"💡 Значение: `{value_machine}`"
+                    )
+                    
+                    # Создаем клавиатуру с кнопкой удаления
+                    notify_keyboard = [[
+                        InlineKeyboardButton(text="🗑️ Удалить", callback_data=f"del_notify_{query.message.message_id}")
+                    ]]
+                    notify_reply_markup = InlineKeyboardMarkup(notify_keyboard)
+                    
+                    await context.bot.send_message(
+                        chat_id=chat_id,
+                        text=notification_text,
+                        reply_markup=notify_reply_markup,
+                        parse_mode='Markdown'
+                    )
+                    logger.info(f"Уведомление отправлено пользователю {user_id} о команде {cmd_machine}={value_machine}")
+            except Exception as e:
+                logger.error(f"Ошибка отправки уведомления: {e}")
+        
     except Exception as e:
         logger.error(f"Ошибка записи команды в БД: {e}", exc_info=True)
         await query.answer("⚠️ Ошибка при отправке команды", show_alert=True)
@@ -830,3 +861,35 @@ def register_task_handlers(application) -> None:
     application.add_handler(
         CallbackQueryHandler(handle_task_command_execution, pattern=r"^task_cmd_exec_\d+_\d+_.+_.+$")
     )
+    
+    # Обработчик удаления уведомления о выполненной команде
+    application.add_handler(
+        CallbackQueryHandler(handle_delete_notification, pattern=r"^del_notify_\d+$")
+    )
+
+
+async def handle_delete_notification(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Обработчик удаления уведомления о выполненной команде.
+    callback_data: del_notify_{message_id}
+    """
+    query = update.callback_query
+    await query.answer()
+    
+    try:
+        data = query.data
+        parts = data.split('_')
+        if len(parts) < 3:
+            raise ValueError("Неверный формат callback_data")
+        
+        message_id = int(parts[2])
+        chat_id = query.message.chat_id
+        
+        logger.info(f"[DEL_NOTIFY] Удаление уведомления message_id={message_id} в chat_id={chat_id}")
+        
+        # Удаляем сообщение с уведомлением
+        await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+        
+    except Exception as e:
+        logger.error(f"Ошибка удаления уведомления: {e}")
+        await query.answer("⚠️ Не удалось удалить сообщение", show_alert=True)

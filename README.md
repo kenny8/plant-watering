@@ -116,7 +116,10 @@ Web Browser → Nginx → Frontend Static → Backend API → Database
 3. Bot → Извлекает device_id, command, value
 4. Bot → INSERT INTO device_commands (device_id, command, value, is_executed=0)
 5. Bot → Отправляет подтверждение пользователю
-6. [Device → GET /{machine_name}/{device_id}/get_endpoint → Получает команду]
+6. Bot → Проверяет статус уведомлений пользователя
+7. Bot → Если уведомления включены → отправляет уведомление с кнопкой "🗑️ Удалить"
+8. [Device → GET /{machine_name}/{device_id}/get_endpoint → Получает команду]
+9. [User → Нажимает "🗑️ Удалить" → handle_delete_notification() → delete_message()]
 ```
 
 #### Действие пользователя в боте (общий flow):
@@ -207,7 +210,8 @@ Web Browser → Nginx → Frontend Static → Backend API → Database
 | `handle_task_device_select` | callback_query | pattern: `^task_dev_\d+_\d+$` | Выбор устройства, загрузка GET-команд из builds.get_fields | Заголовок + список команд (пагинация) | Database → builds.get_fields, user_devices |
 | `handle_commands_pagination` | callback_query | pattern: `^task_cmd_\d+_\d+_p\d+$` | Пагинация списка GET-команд | InlineKeyboard: команды, ◀️, ▶️, 🔙 | Database → builds.get_fields, user_devices |
 | `handle_task_command_select` | callback_query | pattern: `^task_cmd_val_\d+_\d+_.+$` | Выбор команды, показ параметров из bot_parameters | InlineKeyboard: параметры команды (кнопки действий), 🔙 | Database → builds.get_fields, user_devices |
-| `handle_task_command_execution` | callback_query | pattern: `^task_cmd_exec_\d+_\d+_.+_.+$` | Выполнение команды — запись в БД (device_commands) | Подтверждение отправки команды | Database → INSERT INTO device_commands, user_devices |
+| `handle_task_command_execution` | callback_query | pattern: `^task_cmd_exec_\d+_\d+_.+_.+$` | Выполнение команды — запись в БД (device_commands), отправка уведомления если включено | Подтверждение отправки команды + уведомление | Database → INSERT INTO device_commands, NotificationService → send_message |
+| `handle_delete_notification` | callback_query | pattern: `^del_notify_\d+$` | Удаление сообщения с уведомлением о выполненной команде | Удаление сообщения | Bot → delete_message |
 
 ### 2.4 Кнопки
 
@@ -250,6 +254,7 @@ Web Browser → Nginx → Frontend Static → Backend API → Database
 | `🔙 Назад к устройствам` | Inline | `data_list_p1` | Возврат к списку устройств | Нет |
 | `◀️` | Inline | `data_list_p{page}` | Пагинация списка устройств (страница влево) | Нет |
 | `▶️` | Inline | `data_list_p{page}` | Пагинация списка устройств (страница вправо) | Нет |
+| `🗑️ Удалить` | Inline | `del_notify_{message_id}` | Удаление сообщения с уведомлением о выполненной команде | Нет |
 
 ### 2.4.1 Навигация по разделу "Данные" (Data Flow)
 
