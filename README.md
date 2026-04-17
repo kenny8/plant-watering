@@ -414,8 +414,8 @@ User Action → Bot Handler → Service Layer → SQLAlchemy → Database
 | `devices` | Device | Устройства (привязаны к сборкам) |
 | `device_data` | DeviceDataRecord | Временные ряды данных с устройств |
 | `device_commands` | DeviceCommand | Очередь команд для устройств (бот → устройство) |
-| `user_devices` | UserDevice (в боте) | Связь пользователь-устройство |
-| `user_settings` | [TODO: модель не определена в backend] | Настройки пользователей (уведомления) |
+| `user_devices` | UserDevice | Связь пользователь-устройство (модель в bot/models/user_device.py) |
+| `user_settings` | UserSettings | Настройки пользователей (уведомления, chat_id) |
 
 **Схема**:
 ```sql
@@ -469,11 +469,12 @@ user_devices:
   - created_at
 
 user_settings:
-  - id (PK) [TODO: уточнить схему]
-  - user_id
-  - chat_id
-  - notifications_enabled (BOOLEAN)
-  - updated_at
+  - id (PK)
+  - user_id (FK → users.id)
+  - chat_id (bigint, unique with user_id)
+  - notifications_enabled (BOOLEAN, default=1)
+  - created_at (timestamp)
+  - updated_at (timestamp)
 ```
 
 **Миграции**: [TODO: не реализовано — используется `Base.metadata.create_all()`]
@@ -746,7 +747,8 @@ docker-compose down -v
 │   ├── services/
 │   │   ├── device_service.py    # Логика управления устройствами
 │   │   ├── user_settings_service.py  # Настройки пользователей
-│   │   └── notification_service.py   # Сервис уведомлений
+│   │   ├── notification_service.py   # Сервис уведомлений
+│   │   └── api_client.py        # API клиент (пустой заглушка)
 │   ├── utils/
 │   │   ├── config.py            # Загрузка конфигурации из env
 │   │   └── logger.py            # Настройка логирования
@@ -821,7 +823,7 @@ docker-compose down -v
 | `sqlalchemy` | 2.0.30 | ORM | Backend, Bot |
 | `pymysql` | 1.1.0 | MySQL driver | Backend, Bot |
 | `matplotlib` | 3.8.4 | Генерация графиков аналитики (data_charts.py) | Bot |
-| `openpyxl` | 3.1.2 | Генерация Excel-файлов | Bot |
+| `openpyxl` | 3.1.5 | Генерация Excel-файлов | Bot |
 
 #### Frontend (CDN)
 
