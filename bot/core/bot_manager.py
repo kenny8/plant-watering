@@ -81,13 +81,27 @@ class BotManager:
         try:
             logger.info("🛠️ Creating bot application...")
             
-            self.application = (
+            # Получаем прокси URL из базы данных
+            proxy_url = await self.database.get_bot_proxy_url()
+            
+            # Строим приложение с базовыми параметрами
+            app_builder = (
                 Application.builder()
                 .token(self.current_token)
                 .arbitrary_callback_data(False)
-                .base_url("https://mybot-proxy2026.fedoranisimov.workers.dev/bot")
-                .build()
             )
+            
+            # Если есть прокси в БД - используем его, иначе пробуем дефолтный
+            if proxy_url:
+                logger.info(f"🔗 Using proxy from database: {proxy_url}")
+                app_builder = app_builder.base_url(proxy_url.strip())
+            else:
+                # Пробуем дефолтный прокси
+                default_proxy = "https://mybot-proxy2026.fedoranisimov.workers.dev/bot"
+                logger.info(f"🔗 No proxy in DB, trying default: {default_proxy}")
+                app_builder = app_builder.base_url(default_proxy)
+            
+            self.application = app_builder.build()
             
             # Регистрируем обработчики команд
             self._register_handlers()

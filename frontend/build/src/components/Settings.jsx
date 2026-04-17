@@ -13,16 +13,19 @@ function Settings() {
   console.log('Settings.jsx: Rendering');
   const { token } = useAuth();
   const [telegramBotToken, setTelegramBotToken] = useState('');
+  const [botProxyUrl, setBotProxyUrl] = useState('');
   const [message, setMessage] = useState('');
 
   useEffect(() => {
-    console.log('Settings.jsx: Checking saved bot token');
+    console.log('Settings.jsx: Checking saved bot token and proxy');
     const savedToken = localStorage.getItem('telegram_bot_token') || '';
+    const savedProxy = localStorage.getItem('bot_proxy_url') || '';
     setTelegramBotToken(savedToken);
+    setBotProxyUrl(savedProxy);
   }, []);
 
   const handleSave = async () => {
-    console.log('Settings.jsx: Saving bot token:', telegramBotToken);
+    console.log('Settings.jsx: Saving bot token:', telegramBotToken, 'proxy:', botProxyUrl);
     if (!token) {
       console.error('Settings.jsx: No auth token available');
       setMessage('Ошибка: Вы не авторизованы');
@@ -32,15 +35,19 @@ function Settings() {
     try {
       const response = await window.axios.post(
         '/api/settings/bot-token',
-        { telegram_bot_token: telegramBotToken },
+        { 
+          telegram_bot_token: telegramBotToken,
+          bot_proxy_url: botProxyUrl
+        },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       console.log('Settings.jsx: Save response:', response.data);
       localStorage.setItem('telegram_bot_token', telegramBotToken);
-      setMessage('Токен сохранён успешно!');
+      localStorage.setItem('bot_proxy_url', botProxyUrl);
+      setMessage('Настройки сохранены успешно!');
     } catch (error) {
       console.error('Settings.jsx: Save failed:', error.response?.data || error.message);
-      setMessage('Ошибка при сохранении токена');
+      setMessage('Ошибка при сохранении настроек');
     }
   };
 
@@ -74,6 +81,24 @@ function Settings() {
           className: 'w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500',
           placeholder: 'Введите токен Telegram бота'
         })
+      ),
+      
+      React.createElement(
+        'div',
+        { className: 'mb-4' },
+        React.createElement('label', { 
+          className: 'block text-gray-700 text-sm font-bold mb-2' 
+        }, 'Proxy URL для бота (Cloudflare Workers)'),
+        React.createElement('input', {
+          type: 'text',
+          value: botProxyUrl,
+          onChange: (e) => setBotProxyUrl(e.target.value),
+          className: 'w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500',
+          placeholder: 'https://your-proxy.workers.dev/bot'
+        }),
+        React.createElement('p', {
+          className: 'text-xs text-gray-500 mt-1'
+        }, 'Формат: https://имя-прокси.workers.dev/bot')
       ),
       
       React.createElement(
