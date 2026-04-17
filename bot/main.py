@@ -2,6 +2,7 @@ import asyncio
 import signal
 from utils.config import Config
 from utils.logger import setup_logger
+from utils.db_init import ensure_bot_proxy_column
 from core.bot_manager import BotManager
 
 # Настраиваем логгер с DEBUG уровнем
@@ -40,6 +41,12 @@ async def main():
         
         logger.info(f"📊 Config loaded - DB: {db_url.split('@')[1] if '@' in db_url else '***'}")
         logger.info(f"📊 Token check interval: {check_interval}s")
+        
+        # Инициализируем базу данных (создаем колонку bot_proxy_url если нет)
+        logger.info("🔧 Ensuring database schema is up to date...")
+        if not ensure_bot_proxy_column(db_url):
+            logger.error("💥 Failed to ensure database schema. Exiting.")
+            return
         
         # Создаем менеджер бота
         bot_manager = BotManager(db_url, check_interval)

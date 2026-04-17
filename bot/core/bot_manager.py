@@ -91,15 +91,12 @@ class BotManager:
                 .arbitrary_callback_data(False)
             )
             
-            # Если есть прокси в БД - используем его, иначе пробуем дефолтный
-            if proxy_url:
+            # Если есть прокси в БД - используем его
+            if proxy_url and proxy_url.strip():
                 logger.info(f"🔗 Using proxy from database: {proxy_url}")
                 app_builder = app_builder.base_url(proxy_url.strip())
             else:
-                # Пробуем дефолтный прокси
-                default_proxy = "https://mybot-proxy2026.fedoranisimov.workers.dev/bot"
-                logger.info(f"🔗 No proxy in DB, trying default: {default_proxy}")
-                app_builder = app_builder.base_url(default_proxy)
+                logger.info("🔗 No proxy URL in database, connecting directly")
             
             self.application = app_builder.build()
             
