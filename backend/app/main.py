@@ -38,6 +38,7 @@ class Settings(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer)
     telegram_bot_token = Column(String)
+    bot_proxy_url = Column(String)
 
 class Device(Base):
     __tablename__ = "devices"
@@ -81,6 +82,7 @@ class BuildCreate(BaseModel):
 
 class TokenRequest(BaseModel):
     telegram_bot_token: str
+    bot_proxy_url: str = None
   
 # Pydantic модель для данных устройства
 class DeviceData(BaseModel):
@@ -345,8 +347,9 @@ async def save_token(request: TokenRequest, db: Session = Depends(get_db), token
     settings = db.query(Settings).filter(Settings.user_id == 1).first()
     if settings:
         settings.telegram_bot_token = request.telegram_bot_token
+        settings.bot_proxy_url = request.bot_proxy_url
     else:
-        settings = Settings(user_id=1, telegram_bot_token=request.telegram_bot_token)
+        settings = Settings(user_id=1, telegram_bot_token=request.telegram_bot_token, bot_proxy_url=request.bot_proxy_url)
         db.add(settings)
     db.commit()
     return {"status": "saved"}
