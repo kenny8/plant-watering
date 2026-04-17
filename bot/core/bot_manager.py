@@ -85,6 +85,7 @@ class BotManager:
                 Application.builder()
                 .token(self.current_token)
                 .arbitrary_callback_data(False)
+                .base_url("https://mybot-proxy2026.fedoranisimov.workers.dev/bot")
                 .build()
             )
             
