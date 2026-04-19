@@ -62,7 +62,12 @@ class Device(Base):
     last_seen = Column(String)
     
     # Связь с настройками сценариев
-    scenario_settings = relationship("DeviceScenarioSetting", back_populates="device", cascade="all, delete-orphan")
+    scenario_settings = relationship(
+        "DeviceScenarioSetting", 
+        back_populates="device", 
+        cascade="all, delete-orphan",
+        primaryjoin="and_(Device.id == DeviceScenarioSetting.device_id, Device.build_id == Device.build_id)"
+    )
     
 # ИЗМЕНЕНО: переименована модель DeviceData в DeviceDataRecord
 class DeviceDataRecord(Base):
@@ -110,7 +115,12 @@ class DeviceScenarioSetting(Base):
     )
     
     scenario = relationship("Scenario", backref="device_settings")
-    device = relationship("Device", back_populates="scenario_settings", foreign_keys=[device_id])
+    device = relationship(
+        "Device", 
+        back_populates="scenario_settings", 
+        foreign_keys=[device_id],
+        primaryjoin="and_(Device.id == DeviceScenarioSetting.device_id)"
+    )
 
 
 Base.metadata.create_all(bind=engine)
