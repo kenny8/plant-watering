@@ -788,6 +788,58 @@ async def create_scenario(scenario: ScenarioCreate, db: Session = Depends(get_db
     return db_scenario
 
 
+@app.put("/api/scenarios/{id}", response_model=ScenarioResponse)
+async def update_scenario(id: int, scenario: ScenarioUpdate, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
+    """Обновить существующий сценарий"""
+    db_scenario = db.query(Scenario).filter(Scenario.id == id).first()
+    if not db_scenario:
+        raise HTTPException(status_code=404, detail="Scenario not found")
+    
+    # Проверяем уникальность machine_name если он меняется
+    if scenario.machine_name and scenario.machine_name != db_scenario.machine_name:
+        existing = db.query(Scenario).filter(
+            Scenario.machine_name == scenario.machine_name,
+            Scenario.id != id
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Scenario with this machine_name already exists")
+    
+    # Обновляем поля
+    if scenario.human_name is not None:
+        db_scenario.human_name = scenario.human_name
+    if scenario.machine_name is not None:
+        db_scenario.machine_name = scenario.machine_name
+    if scenario.flow_data is not None:
+        db_scenario.flow_data = scenario.flow_data
+    if scenario.is_active is not None:
+        db_scenario.is_active = scenario.is_active
+    
+    db.commit()
+    db.refresh(db_scenario)
+    return db_scenario
+
+
+@app.get("/api/scenarios/{id}", response_model=ScenarioResponse)
+async def get_scenario(id: int, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
+    """Получить сценарий по ID"""
+    scenario = db.query(Scenario).filter(Scenario.id == id).first()
+    if not scenario:
+        raise HTTPException(status_code=404, detail="Scenario not found")
+    return scenario
+
+
+@app.delete("/api/scenarios/{id}", response_model=dict)
+async def delete_scenario(id: int, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
+    """Удалить сценарий"""
+    scenario = db.query(Scenario).filter(Scenario.id == id).first()
+    if not scenario:
+        raise HTTPException(status_code=404, detail="Scenario not found")
+    
+    db.delete(scenario)
+    db.commit()
+    return {"message": "Scenario deleted"}
+
+
 @app.patch("/api/scenarios/{id}/toggle", response_model=ScenarioResponse)
 async def toggle_scenario(id: int, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
     """Инвертировать статус is_active у сценария"""
