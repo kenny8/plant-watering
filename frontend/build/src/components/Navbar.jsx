@@ -24,6 +24,12 @@ function Navbar() {
 	window.dispatchEvent(new Event('popstate'));
   };
 
+  const handleScenariosClick = () => {
+	console.log('Navbar: Scenarios button clicked');
+	window.history.pushState({}, '', '/scenarios');
+	window.dispatchEvent(new Event('popstate'));
+  };
+
   const handleDevicesClick = () => {
     console.log('Navbar: Devices button clicked');
     window.history.pushState({}, '', '/devices');
@@ -70,6 +76,14 @@ function Navbar() {
             className: 'px-3 py-2 rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500'
           },
           'Сборки'
+        ),
+        React.createElement(
+          'button',
+          {
+            onClick: handleScenariosClick,
+            className: 'px-3 py-2 rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500'
+          },
+          'Сценарии'
         ),
         React.createElement(
           'button',
