@@ -95,7 +95,22 @@ Web Browser → Nginx → Frontend Static → Backend API → Database
 3. Backend → Валидирует JSON
 4. Backend → get_or_create_device() — проверяет/создает устройство в БД
 5. Backend → Сохраняет данные в device_data
-6. Backend → Возвращает {status: "success", ...}
+6. Backend → Асинхронно: evaluate_device_scenarios() — проверка активных сценариев
+7. Backend → Возвращает {status: "success", ...}
+```
+
+#### Автоматическое выполнение сценариев (после получения данных от устройства):
+```
+1. Backend → После сохранения данных в device_data
+2. Backend → evaluate_device_scenarios(db, device_id, incoming_data) [асинхронно]
+3. Backend → Находит все активные сценарии для build_id устройства
+4. Backend → Для каждого сценария парсит flow_data и проверяет:
+   - trigger: наличие поля в incoming_data
+   - condition: сравнение значения (операторы: eq, ne, gt, lt, ge, le, contains)
+   - day_filter: проверка текущего дня недели (0=Monday, 6=Sunday)
+5. Backend → Если все условия выполнены → INSERT INTO device_commands (action)
+6. Backend → Логирование: какой сценарий сработал, какая команда поставлена в очередь
+7. [Device → GET /{machine_name}/{device_id}/get_endpoint → Получает команду]
 ```
 
 #### Запрос от IoT устройства (GET — получение команд):
@@ -399,6 +414,9 @@ User Action → Bot Handler → Service Layer → SQLAlchemy → Database
 | `GET` | `/api/devices/{device_id}/data` | Данные устройства | device_id (path), limit (query, optional) | `{device_id, total_records, data}` | JWT | Frontend |
 | `POST` | `/api/settings/bot-token` | Сохранение токена бота | `{telegram_bot_token}` | `{status: "saved"}` | JWT | Frontend |
 | `GET` | `/api/health` | Health check | - | `{status: "ok"}` | Нет | Monitoring |
+| `GET` | `/api/scenarios` | Список всех сценариев | - | List[Scenario] | JWT | Frontend |
+| `POST` | `/api/scenarios` | Создание сценария | `{human_name, machine_name, build_id, flow_data, is_active}` | Scenario object | JWT | Frontend |
+| `PATCH` | `/api/scenarios/{id}/toggle` | Переключение активности сценария | id (path) | Scenario object | JWT | Frontend |
 
 ### 3.3 База данных
 
@@ -414,6 +432,7 @@ User Action → Bot Handler → Service Layer → SQLAlchemy → Database
 | `devices` | Device | Устройства (привязаны к сборкам) |
 | `device_data` | DeviceDataRecord | Временные ряды данных с устройств |
 | `device_commands` | DeviceCommand | Очередь команд для устройств (бот → устройство) |
+| `scenarios` | Scenario | Автоматические сценарии выполнения действий по условиям |
 | `user_devices` | UserDevice (в боте) | Связь пользователь-устройство |
 | `user_settings` | [TODO: модель не определена в backend] | Настройки пользователей (уведомления) |
 
@@ -460,6 +479,19 @@ device_commands:
   - created_at
   - is_executed (BOOLEAN, default=False)
 
+scenarios:
+  - id (PK)
+  - human_name (VARCHAR(255))
+  - machine_name (VARCHAR(100), unique)
+  - build_id (FK → builds.id)
+  - flow_data (JSON) - структура сценария: {nodes: [{id, type, data}]}
+  - is_active (BOOLEAN, default=True)
+  - ноды в flow_data:
+    - trigger: поле из incoming_data для проверки существования
+    - condition: оператор сравнения (eq, ne, gt, lt, ge, le, contains) + значение
+    - day_filter: список разрешённых дней недели (0=Monday, 6=Sunday)
+    - action: команда для отправки (command, value, target_device_id)
+
 user_devices:
   - id (PK)
   - user_id (FK → users.id)
@@ -488,7 +520,13 @@ user_settings:
 
 ### 3.4 Фоновые задачи
 
-**Backend**: [TODO: не реализовано — нет очередей, Celery, RQ]
+**Backend**:
+- **Scenario Evaluation** (асинхронная задача):
+  - Расположение: `backend/app/main.py` → `evaluate_device_scenarios()`, `_evaluate_scenarios_async()`
+  - Триггер: вызывается после каждого POST запроса от устройства на `/post_endpoint`
+  - Метод выполнения: `asyncio.create_task()` — неблокирующее выполнение
+  - Логика: проверка всех активных сценариев для build_id устройства, оценка условий, постановка команд в очередь
+  - Логирование: `logger.info()` о сработавших сценариях, `logger.debug()` о деталях проверки
 
 **Bot Token Monitor**:
 - Расположение: `bot/core/token_monitor.py`
@@ -869,3 +907,136 @@ docker-compose down -v
 ---
 
 *Документ сгенерирован на основе анализа исходного кода репозитория. Последнее обновление: 16.04.2026, 01:22 (добавлена документация по разделу "Данные" — этапы 1-3)*
+
+---
+
+## 📝 ПРИЛОЖЕНИЕ B: Система автоматических сценариев
+
+### Обзор
+
+Система сценариев позволяет автоматически выполнять действия (отправлять команды устройствам) при наступлении определённых условий на основе данных от IoT-устройств.
+
+### Архитектура
+
+**Компоненты:**
+1. **Таблица `scenarios`** — хранение конфигураций сценариев
+2. **Функция `evaluate_device_scenarios()`** — ядро оценки условий
+3. **Асинхронная обёртка `_evaluate_scenarios_async()`** — неблокирующее выполнение
+4. **Интеграция в POST endpoint** — автоматический вызов после получения данных
+
+### Структура сценария (flow_data)
+
+```json
+{
+  "nodes": [
+    {
+      "id": "node_1",
+      "type": "trigger",
+      "data": {"field": "temperature"}
+    },
+    {
+      "id": "node_2",
+      "type": "condition",
+      "data": {"operator": "gt", "value": 25}
+    },
+    {
+      "id": "node_3",
+      "type": "day_filter",
+      "data": {"days": [0, 1, 2, 3, 4]}
+    },
+    {
+      "id": "node_4",
+      "type": "action",
+      "data": {"command": "fan_on", "value": "high", "target_device_id": 2}
+    }
+  ]
+}
+```
+
+### Типы нод
+
+| Тип | Описание | Поля data | Пример |
+|-----|----------|-----------|--------|
+| `trigger` | Проверка наличия поля во входящих данных | `field` — имя поля | `{"field": "humidity"}` |
+| `condition` | Сравнение значения | `operator`, `value`, `field` (опционально) | `{"operator": "gt", "value": 50}` |
+| `day_filter` | Фильтр по дням недели | `days` — список дней (0-6) | `{"days": [1, 3, 5]}` |
+| `action` | Действие при выполнении условий | `command`, `value`, `target_device_id` | `{"command": "pump_on", "value": "1"}` |
+
+### Операторы условий
+
+| Оператор | Описание | Пример |
+|----------|----------|--------|
+| `eq` | Равно | `value == 25` |
+| `ne` | Не равно | `value != 0` |
+| `gt` | Больше | `value > 25` |
+| `lt` | Меньше | `value < 10` |
+| `ge` | Больше или равно | `value >= 0` |
+| `le` | Меньше или равно | `value <= 100` |
+| `contains` | Содержит подстроку | `"error" in value` |
+
+### Алгоритм выполнения
+
+```
+1. Получение данных от устройства → POST /post_endpoint
+2. Сохранение в device_data
+3. Асинхронный запуск evaluate_device_scenarios()
+4. Для каждого активного сценария:
+   a. Парсинг flow_data
+   b. Поиск ноды trigger → проверка наличия поля
+   c. Поиск ноды condition → оценка сравнения
+   d. Поиск ноды day_filter → проверка дня недели
+   e. Если все условия true → поиск ноды action
+   f. Создание записи в device_commands
+5. Логирование результата
+```
+
+### API для управления сценариями
+
+| Метод | Endpoint | Описание |
+|-------|----------|----------|
+| `GET` | `/api/scenarios` | Получить все сценарии |
+| `POST` | `/api/scenarios` | Создать новый сценарий |
+| `PATCH` | `/api/scenarios/{id}/toggle` | Включить/выключить сценарий |
+
+### Логирование
+
+**Уровни логирования:**
+- `INFO` — найденные сценарии, сработавшие команды, итоговое количество команд
+- `DEBUG` — детали проверки каждой ноды (триггер, день, условие)
+- `WARNING` — устройство не найдено
+- `ERROR` — ошибки выполнения с откатом транзакции
+
+**Примеры логов:**
+```
+INFO - Found 3 active scenarios for build 1
+DEBUG - Evaluating scenario 5 (auto_watering)
+DEBUG - Scenario 5: trigger field 'humidity' found in incoming data
+DEBUG - Scenario 5: day filter matched (Monday)
+DEBUG - Scenario 5: condition met (25 > 20)
+INFO - Scenario 5 (auto_watering) triggered: command 'pump_on'=1 queued for device 3
+INFO - Total 1 commands queued for device 3
+```
+
+### Пример использования
+
+**Сценарий: Автоматический полив при низкой влажности**
+
+```json
+POST /api/scenarios
+{
+  "human_name": "Автополив",
+  "machine_name": "auto_watering",
+  "build_id": 1,
+  "is_active": true,
+  "flow_data": {
+    "nodes": [
+      {"id": "t1", "type": "trigger", "data": {"field": "soil_humidity"}},
+      {"id": "c1", "type": "condition", "data": {"operator": "lt", "value": 30}},
+      {"id": "d1", "type": "day_filter", "data": {"days": [0,1,2,3,4,5,6]}},
+      {"id": "a1", "type": "action", "data": {"command": "valve_open", "value": "1", "target_device_id": 2}}
+    ]
+  }
+}
+```
+
+**Результат:** При получении данных с полем `soil_humidity < 30` система автоматически отправит команду `valve_open=1` на устройство 2.
