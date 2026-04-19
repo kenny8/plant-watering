@@ -72,6 +72,41 @@ function Devices() {
 	window.dispatchEvent(new PopStateEvent('popstate'));
   };
 
+  const [showDeviceScenarios, setShowDeviceScenarios] = useState(null);
+  const [deviceScenarios, setDeviceScenarios] = useState([]);
+
+  const handleDeviceScenariosClick = async (device) => {
+    console.log(`Devices.jsx: Device scenarios button clicked for device:`, device);
+    if (showDeviceScenarios === device.id) {
+      setShowDeviceScenarios(null);
+      return;
+    }
+    setShowDeviceScenarios(device.id);
+    
+    try {
+      const response = await window.axios.get(`/api/devices/${device.id}/scenarios`, { 
+        headers: { Authorization: `Bearer ${token}` } 
+      });
+      setDeviceScenarios(response.data.scenarios || response.data || []);
+    } catch (error) {
+      console.error('Error fetching device scenarios:', error);
+      setDeviceScenarios([]);
+    }
+  };
+
+  const handleDeviceScenarioToggle = async (deviceId, scenarioId, currentStatus) => {
+    try {
+      await window.axios.patch(`/api/devices/${deviceId}/scenarios/${scenarioId}/toggle`, {}, { 
+        headers: { Authorization: `Bearer ${token}` } 
+      });
+      setDeviceScenarios(deviceScenarios.map(s => 
+        s.id === scenarioId ? { ...s, is_active: !currentStatus } : s
+      ));
+    } catch (error) {
+      console.error('Error toggling device scenario:', error);
+    }
+  };
+
   return React.createElement(
     'div',
     { className: 'flex flex-col items-center min-h-screen bg-gray-100 py-8' },
@@ -125,6 +160,14 @@ function Devices() {
                     React.createElement(
                       'button',
                       {
+                        onClick: () => handleDeviceScenariosClick(device),
+                        className: 'bg-purple-600 text-white py-1 px-3 rounded hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm'
+                      },
+                      'Сценарии устройства'
+                    ),
+                    React.createElement(
+                      'button',
+                      {
                         onClick: () => handleDelete(device.id),
                         className: 'bg-red-600 text-white py-1 px-3 rounded hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 text-sm'
                       },
@@ -133,6 +176,37 @@ function Devices() {
                   )
                 )
               )
+            ),
+            showDeviceScenarios && React.createElement(
+              'div',
+              { className: 'mt-4 bg-white shadow-md rounded-lg p-4' },
+              React.createElement('h3', { className: 'text-lg font-bold mb-2' }, `Сценарии устройства (ID: ${showDeviceScenarios})`),
+              deviceScenarios.length === 0
+                ? React.createElement('p', { className: 'text-gray-500' }, 'Сценарии не найдены')
+                : React.createElement(
+                    'div',
+                    { className: 'space-y-2' },
+                    deviceScenarios.map(scenario =>
+                      React.createElement(
+                        'div',
+                        { key: scenario.id, className: 'flex justify-between items-center p-2 border rounded' },
+                        React.createElement('span', null, scenario.human_name || scenario.machine_name),
+                        React.createElement(
+                          'button',
+                          {
+                            onClick: () => handleDeviceScenarioToggle(showDeviceScenarios, scenario.id, scenario.is_active),
+                            className: `relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${scenario.is_active ? 'bg-green-600' : 'bg-gray-300'}`
+                          },
+                          React.createElement(
+                            'span',
+                            {
+                              className: `inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${scenario.is_active ? 'translate-x-6' : 'translate-x-1'}`
+                            }
+                          )
+                        )
+                      )
+                    )
+                  )
             )
           )
     )
