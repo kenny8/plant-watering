@@ -32,6 +32,22 @@ function AppContent() {
     return () => window.removeEventListener('popstate', handlePopstate);
   }, []);
 
+  // Проверяем, нужно ли открыть редактор сценариев
+  useEffect(() => {
+    if (currentPath === '/scenarios/create' || currentPath.startsWith('/scenarios/edit/')) {
+      setIsScenarioEditorOpen(true);
+      if (currentPath.startsWith('/scenarios/edit/')) {
+        const id = currentPath.split('/scenarios/edit/')[1];
+        setEditingScenarioId(id);
+      } else {
+        setEditingScenarioId(null);
+      }
+    } else {
+      setIsScenarioEditorOpen(false);
+      setEditingScenarioId(null);
+    }
+  }, [currentPath]);
+
   const handleAddAssembly = () => {
     console.log('AppContent: handleAddAssembly called');
     setIsCreateBuildOpen(true);
@@ -48,53 +64,37 @@ function AppContent() {
     // Можно добавить обновление состояния если нужно
   };
 
+  const renderContent = () => {
+    if (currentPath === '/devices') {
+      console.log('AppContent: Rendering Devices');
+      return React.createElement(window.Devices);
+    } else if (currentPath === '/settings') {
+      console.log('AppContent: Rendering Settings');
+      return React.createElement(window.Settings);
+    } else if (currentPath === '/assemblies') {
+      console.log('AppContent: Rendering Assemblies');
+      return React.createElement(window.Assemblies, { onEditBuild: handleEditBuild });
+    } else if (currentPath === '/scenarios') {
+      console.log('AppContent: Rendering ScenariosPage');
+      return React.createElement(window.ScenariosPage);
+    } else if (currentPath.startsWith('/device-data')) {
+      console.log('AppContent: Rendering DeviceData');
+      return React.createElement(window.DeviceData);
+    } else {
+      console.log('AppContent: Rendering Home');
+      return React.createElement(window.Home, { onAddAssembly: handleAddAssembly });
+    }
+  };
+
   if (!isAuthenticated) {
     console.log('AppContent: Rendering Login');
     return React.createElement(window.Login);
   }
 
-const renderContent = () => {
-  if (currentPath === '/devices') {
-    console.log('AppContent: Rendering Devices');
-    return React.createElement(window.Devices);
-  } else if (currentPath === '/settings') {
-    console.log('AppContent: Rendering Settings');
-    return React.createElement(window.Settings);
-  } else if (currentPath === '/assemblies') {
-    console.log('AppContent: Rendering Assemblies');
-    return React.createElement(window.Assemblies, { onEditBuild: handleEditBuild });
-  } else if (currentPath === '/scenarios') {
-    console.log('AppContent: Rendering ScenariosPage');
-    return React.createElement(window.ScenariosPage);
-  } else if (currentPath.startsWith('/device-data')) {
-    console.log('AppContent: Rendering DeviceData');
-    return React.createElement(window.DeviceData);
-  } else {
-    console.log('AppContent: Rendering Home');
-    return React.createElement(window.Home, { onAddAssembly: handleAddAssembly });
-  }
-};
-
   console.log('AppContent: isCreateBuildOpen:', isCreateBuildOpen);
   console.log('AppContent: editingBuild:', editingBuild);
   console.log('AppContent: isScenarioEditorOpen:', isScenarioEditorOpen);
   console.log('AppContent: editingScenarioId:', editingScenarioId);
-  
-  // Проверяем, нужно ли открыть редактор сценариев
-  useEffect(() => {
-    if (currentPath === '/scenarios/create' || currentPath.startsWith('/scenarios/edit/')) {
-      setIsScenarioEditorOpen(true);
-      if (currentPath.startsWith('/scenarios/edit/')) {
-        const id = currentPath.split('/scenarios/edit/')[1];
-        setEditingScenarioId(id);
-      } else {
-        setEditingScenarioId(null);
-      }
-    } else {
-      setIsScenarioEditorOpen(false);
-      setEditingScenarioId(null);
-    }
-  }, [currentPath]);
   
   return React.createElement(
     'div',

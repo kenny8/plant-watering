@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String, JSON, Text, Boolean, ForeignKey, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session, relationship
+import pymysql
 import jwt
 import datetime
 import os
@@ -60,8 +61,14 @@ class Device(Base):
     created_at = Column(String)
     last_seen = Column(String)
     
-    # Связь с настройками сценариев
-    scenario_settings = relationship("DeviceScenarioSetting", back_populates="device", cascade="all, delete-orphan")
+    # Связь с настройками сценариев - исправлено для работы с составным PK
+    scenario_settings = relationship(
+        "DeviceScenarioSetting", 
+        back_populates="device", 
+        cascade="all, delete-orphan",
+        foreign_keys="DeviceScenarioSetting.device_id",
+        primaryjoin="Device.id == foreign(DeviceScenarioSetting.device_id)"
+    )
     
 # ИЗМЕНЕНО: переименована модель DeviceData в DeviceDataRecord
 class DeviceDataRecord(Base):
@@ -109,7 +116,12 @@ class DeviceScenarioSetting(Base):
     )
     
     scenario = relationship("Scenario", backref="device_settings")
-    device = relationship("Device", back_populates="scenario_settings")
+    device = relationship(
+        "Device", 
+        back_populates="scenario_settings",
+        foreign_keys=[device_id],
+        primaryjoin="Device.id == foreign(DeviceScenarioSetting.device_id)"
+    )
 
 
 Base.metadata.create_all(bind=engine)
@@ -140,14 +152,14 @@ class ScenarioCreate(BaseModel):
     human_name: str
     machine_name: str
     build_id: int
-    flow_data: dict = None
+    flow_data: Optional[dict] = None
     is_active: bool = True
 
 
 class ScenarioUpdate(BaseModel):
     human_name: str = None
     machine_name: str = None
-    flow_data: dict = None
+    flow_data: Optional[dict] = None
     is_active: bool = None
 
 
@@ -156,7 +168,7 @@ class ScenarioResponse(BaseModel):
     human_name: str
     machine_name: str
     build_id: int
-    flow_data: dict = None
+    flow_data: Optional[dict] = None
     is_active: bool
     
     class Config:
