@@ -1,9 +1,9 @@
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
-from sqlalchemy import create_engine, Column, Integer, String, JSON, Text, Boolean
+from sqlalchemy import create_engine, Column, Integer, String, JSON, Text, Boolean, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import sessionmaker, Session, relationship
 import jwt
 import datetime
 import os
@@ -32,6 +32,8 @@ class Build(Base):
     human_name = Column(String)
     post_fields = Column(JSON)
     get_fields = Column(JSON)
+    
+    scenarios = relationship("Scenario", back_populates="build")
 
 class Settings(Base):
     __tablename__ = "settings"
@@ -66,7 +68,20 @@ class DeviceCommand(Base):
     value = Column(String)
     created_at = Column(String)
     is_executed = Column(Boolean, default=False)
+
+
+class Scenario(Base):
+    __tablename__ = "scenarios"
+    id = Column(Integer, primary_key=True, index=True)
+    human_name = Column(String(255))
+    machine_name = Column(String(100), unique=True)
+    build_id = Column(Integer, ForeignKey('builds.id'))
+    flow_data = Column(JSON)
+    is_active = Column(Boolean, default=True)
     
+    build = relationship("Build", back_populates="scenarios")
+
+
 Base.metadata.create_all(bind=engine)
 
 # Pydantic models (остаются без изменений)
@@ -88,6 +103,34 @@ class TokenRequest(BaseModel):
 class DeviceData(BaseModel):
     human_name: str = None
     # другие поля которые могут приходить от устройства
+
+
+# Pydantic схемы для Scenario
+class ScenarioCreate(BaseModel):
+    human_name: str
+    machine_name: str
+    build_id: int
+    flow_data: dict = None
+    is_active: bool = True
+
+
+class ScenarioUpdate(BaseModel):
+    human_name: str = None
+    machine_name: str = None
+    flow_data: dict = None
+    is_active: bool = None
+
+
+class ScenarioResponse(BaseModel):
+    id: int
+    human_name: str
+    machine_name: str
+    build_id: int
+    flow_data: dict = None
+    is_active: bool
+    
+    class Config:
+        from_attributes = True
 
 # Dependency
 def get_db():
@@ -436,3 +479,49 @@ async def get_device_data(
     except Exception as e:
         print(f"Error getting device data: {e}")
         raise HTTPException(status_code=500, detail=f"Error getting device data: {str(e)}")
+
+
+# API роуты для сценариев
+@app.get("/api/scenarios", response_model=list[ScenarioResponse])
+async def get_scenarios(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
+    """Получить все сценарии"""
+    return db.query(Scenario).all()
+
+
+@app.post("/api/scenarios", response_model=ScenarioResponse)
+async def create_scenario(scenario: ScenarioCreate, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
+    """Создать новый сценарий"""
+    # Проверяем существование сборки
+    build = db.query(Build).filter(Build.id == scenario.build_id).first()
+    if not build:
+        raise HTTPException(status_code=404, detail="Build not found")
+    
+    # Проверяем уникальность machine_name
+    existing = db.query(Scenario).filter(Scenario.machine_name == scenario.machine_name).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Scenario with this machine_name already exists")
+    
+    db_scenario = Scenario(
+        human_name=scenario.human_name,
+        machine_name=scenario.machine_name,
+        build_id=scenario.build_id,
+        flow_data=scenario.flow_data,
+        is_active=scenario.is_active
+    )
+    db.add(db_scenario)
+    db.commit()
+    db.refresh(db_scenario)
+    return db_scenario
+
+
+@app.patch("/api/scenarios/{id}/toggle", response_model=ScenarioResponse)
+async def toggle_scenario(id: int, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
+    """Инвертировать статус is_active у сценария"""
+    scenario = db.query(Scenario).filter(Scenario.id == id).first()
+    if not scenario:
+        raise HTTPException(status_code=404, detail="Scenario not found")
+    
+    scenario.is_active = not scenario.is_active
+    db.commit()
+    db.refresh(scenario)
+    return scenario

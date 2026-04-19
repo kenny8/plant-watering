@@ -1,3 +1,32 @@
-Nothing should be ignored in this case, as the changes only include Python source files (.py) which are legitimate code files that should be tracked in version control. There are no build artifacts, dependencies, temporary files, or other items that need to be ignored.
+```
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 
-Output: (empty - no content)
+# Logs and temp files
+*.log
+*.tmp
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Dependencies
+.venv/
+venv/
+node_modules/
+
+# Build artifacts
+dist/
+build/
+target/
+```
