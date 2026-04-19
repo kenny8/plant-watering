@@ -17,6 +17,8 @@ function ScenarioEditor({ scenarioId, onClose }) {
   const [builds, setBuilds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [flowData, setFlowData] = useState(null);
+  const [isActive, setIsActive] = useState(true);
 
   useEffect(() => {
     fetchBuilds();
@@ -49,6 +51,8 @@ function ScenarioEditor({ scenarioId, onClose }) {
       setHumanName(scenario.human_name || '');
       setMachineName(scenario.machine_name || '');
       setBuildId(scenario.build_id || '');
+      setFlowData(scenario.flow_data || null);
+      setIsActive(scenario.is_active !== undefined ? scenario.is_active : true);
       setLoading(false);
     } catch (error) {
       console.error('Error fetching scenario:', error);
@@ -61,7 +65,13 @@ function ScenarioEditor({ scenarioId, onClose }) {
     setSaving(true);
     try {
       const token = localStorage.getItem('token');
-      const payload = { human_name: humanName, machine_name: machineName, build_id: parseInt(buildId) };
+      const payload = { 
+        human_name: humanName, 
+        machine_name: machineName, 
+        build_id: parseInt(buildId),
+        flow_data: flowData,
+        is_active: isActive
+      };
       
       if (scenarioId) {
         await axios.put(`/api/scenarios/${scenarioId}`, payload, {
