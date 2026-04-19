@@ -152,14 +152,14 @@ class ScenarioCreate(BaseModel):
     human_name: str
     machine_name: str
     build_id: int
-    flow_data: dict = None
+    flow_data: Optional[dict] = None
     is_active: bool = True
 
 
 class ScenarioUpdate(BaseModel):
     human_name: str = None
     machine_name: str = None
-    flow_data: dict = None
+    flow_data: Optional[dict] = None
     is_active: bool = None
 
 
@@ -168,7 +168,7 @@ class ScenarioResponse(BaseModel):
     human_name: str
     machine_name: str
     build_id: int
-    flow_data: dict = None
+    flow_data: Optional[dict] = None
     is_active: bool
     
     class Config:
