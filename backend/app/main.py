@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
-from sqlalchemy import create_engine, Column, Integer, String, JSON, Text, Boolean, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, JSON, Text, Boolean, ForeignKey, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session, relationship
 import jwt
@@ -60,6 +60,9 @@ class Device(Base):
     created_at = Column(String)
     last_seen = Column(String)
     
+    # Связь с настройками сценариев
+    scenario_settings = relationship("DeviceScenarioSetting", back_populates="device", cascade="all, delete-orphan")
+    
 # ИЗМЕНЕНО: переименована модель DeviceData в DeviceDataRecord
 class DeviceDataRecord(Base):
     __tablename__ = "device_data"
@@ -90,6 +93,23 @@ class Scenario(Base):
     is_active = Column(Boolean, default=True)
     
     build = relationship("Build", back_populates="scenarios")
+
+
+class DeviceScenarioSetting(Base):
+    __tablename__ = "device_scenario_settings"
+    id = Column(Integer, primary_key=True, index=True)
+    device_id = Column(Integer, index=True, nullable=False)
+    scenario_id = Column(Integer, ForeignKey('scenarios.id'), index=True, nullable=False)
+    is_enabled = Column(Boolean, default=True)
+    
+    # Уникальное ограничение на пару device_id + scenario_id
+    __table_args__ = (
+        UniqueConstraint('device_id', 'scenario_id', name='uq_device_scenario'),
+        {'mysql_engine': 'InnoDB'}  # Для MySQL совместимости
+    )
+    
+    scenario = relationship("Scenario", backref="device_settings")
+    device = relationship("Device", back_populates="scenario_settings")
 
 
 Base.metadata.create_all(bind=engine)
@@ -141,6 +161,25 @@ class ScenarioResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
+
+# Pydantic схемы для DeviceScenarioSetting
+class DeviceScenarioSettingCreate(BaseModel):
+    device_id: int
+    scenario_id: int
+    is_enabled: bool = True
+
+
+class DeviceScenarioSettingResponse(BaseModel):
+    id: int
+    device_id: int
+    scenario_id: int
+    is_enabled: bool
+    scenario: ScenarioResponse = None
+    
+    class Config:
+        from_attributes = True
+
 
 # Dependency
 def get_db():
@@ -275,6 +314,7 @@ def check_day_filter(day_filter_node: Optional[Dict[str, Any]]) -> bool:
 def evaluate_device_scenarios(db: Session, device_id: int, incoming_data: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     Evaluate all active scenarios for a device's build and queue commands if conditions are met.
+    Учитывает как глобальный статус сценария, так и индивидуальные настройки устройства.
     
     Args:
         db: Database session
@@ -295,20 +335,31 @@ def evaluate_device_scenarios(db: Session, device_id: int, incoming_data: Dict[s
         
         build_id = device.build_id
         
-        # Find all active scenarios for this build
+        # Find all globally active scenarios for this build
         active_scenarios = db.query(Scenario).filter(
             Scenario.build_id == build_id,
             Scenario.is_active == True
         ).all()
         
-        logger.info(f"Found {len(active_scenarios)} active scenarios for build {build_id}")
+        logger.info(f"Found {len(active_scenarios)} globally active scenarios for build {build_id}")
         
         for scenario in active_scenarios:
+            # Проверяем индивидуальную настройку для этого устройства
+            device_setting = db.query(DeviceScenarioSetting).filter(
+                DeviceScenarioSetting.device_id == device_id,
+                DeviceScenarioSetting.scenario_id == scenario.id
+            ).first()
+            
+            # Если настройка существует и is_enabled=False, пропускаем этот сценарий для данного устройства
+            if device_setting and not device_setting.is_enabled:
+                logger.debug(f"Scenario {scenario.id} ({scenario.machine_name}) is disabled for device {device_id}")
+                continue
+            
             flow_data = scenario.flow_data
             if not flow_data:
                 continue
             
-            logger.debug(f"Evaluating scenario {scenario.id} ({scenario.machine_name})")
+            logger.debug(f"Evaluating scenario {scenario.id} ({scenario.machine_name}) for device {device_id}")
             
             # Parse flow_data to find nodes
             nodes = flow_data.get('nodes', [])
@@ -736,3 +787,78 @@ async def toggle_scenario(id: int, db: Session = Depends(get_db), token: str = D
     db.commit()
     db.refresh(scenario)
     return scenario
+
+
+# API роуты для управления настройками сценариев на устройствах
+@app.get("/api/devices/{device_id}/scenarios", response_model=list[DeviceScenarioSettingResponse])
+async def get_device_scenarios(device_id: int, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
+    """Получить все настройки сценариев для конкретного устройства"""
+    # Получаем устройство чтобы узнать его build_id
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    
+    # Получаем все сценарии для этой сборки
+    scenarios = db.query(Scenario).filter(Scenario.build_id == device.build_id).all()
+    
+    # Для каждого сценария получаем или создаем настройку для устройства
+    result = []
+    for scenario in scenarios:
+        setting = db.query(DeviceScenarioSetting).filter(
+            DeviceScenarioSetting.device_id == device_id,
+            DeviceScenarioSetting.scenario_id == scenario.id
+        ).first()
+        
+        # Если настройки нет, создаем её (по умолчанию включено)
+        if not setting:
+            setting = DeviceScenarioSetting(
+                device_id=device_id,
+                scenario_id=scenario.id,
+                is_enabled=True
+            )
+            db.add(setting)
+            db.commit()
+            db.refresh(setting)
+        
+        result.append(setting)
+    
+    return result
+
+
+@app.patch("/api/devices/{device_id}/scenarios/{scenario_id}/toggle", response_model=DeviceScenarioSettingResponse)
+async def toggle_device_scenario(device_id: int, scenario_id: int, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
+    """Инвертировать статус is_enabled для сценария на конкретном устройстве"""
+    # Проверяем существование устройства
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    
+    # Проверяем существование сценария
+    scenario = db.query(Scenario).filter(Scenario.id == scenario_id).first()
+    if not scenario:
+        raise HTTPException(status_code=404, detail="Scenario not found")
+    
+    # Проверяем что сценарий принадлежит той же сборке что и устройство
+    if scenario.build_id != device.build_id:
+        raise HTTPException(status_code=400, detail="Scenario does not belong to device's build")
+    
+    # Получаем или создаем настройку
+    setting = db.query(DeviceScenarioSetting).filter(
+        DeviceScenarioSetting.device_id == device_id,
+        DeviceScenarioSetting.scenario_id == scenario_id
+    ).first()
+    
+    if not setting:
+        setting = DeviceScenarioSetting(
+            device_id=device_id,
+            scenario_id=scenario_id,
+            is_enabled=True
+        )
+        db.add(setting)
+    
+    # Инвертируем статус
+    setting.is_enabled = not setting.is_enabled
+    db.commit()
+    db.refresh(setting)
+    
+    return setting

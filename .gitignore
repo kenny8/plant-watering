@@ -1,7 +1,25 @@
 ```
-# Build artifacts
-frontend/build/
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 
-# Dependencies
-node_modules/
+# Directories
+.git/
+.vscode/
+.idea/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+Thumbs.db
+
+# Files
+.env
+.env.local
+.env.*
+*.log
+*.tmp
 ```
