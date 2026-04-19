@@ -7,6 +7,16 @@ from sqlalchemy.orm import sessionmaker, Session, relationship
 import jwt
 import datetime
 import os
+import logging
+import asyncio
+from typing import Any, Dict, List, Optional
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
@@ -195,6 +205,203 @@ async def get_or_create_device(machine_name: str, device_id: int, db: Session, h
         print(f"Error in get_or_create_device: {e}")
         raise HTTPException(status_code=500, detail="Database error")
 
+
+def evaluate_condition(condition_node: Dict[str, Any], incoming_data: Dict[str, Any]) -> bool:
+    """
+    Evaluate a condition node against incoming data.
+    Supports operators: eq, ne, gt, lt, ge, le, contains
+    """
+    field = condition_node.get('field')
+    operator = condition_node.get('operator', 'eq')
+    value = condition_node.get('value')
+    
+    if field not in incoming_data:
+        return False
+    
+    incoming_value = incoming_data[field]
+    
+    # Try to convert to numeric for comparison
+    try:
+        incoming_numeric = float(incoming_value)
+        value_numeric = float(value)
+        is_numeric = True
+    except (ValueError, TypeError):
+        is_numeric = False
+    
+    if operator == 'eq':
+        if is_numeric:
+            return incoming_numeric == value_numeric
+        return str(incoming_value) == str(value)
+    elif operator == 'ne':
+        if is_numeric:
+            return incoming_numeric != value_numeric
+        return str(incoming_value) != str(value)
+    elif operator == 'gt':
+        if is_numeric:
+            return incoming_numeric > value_numeric
+        return str(incoming_value) > str(value)
+    elif operator == 'lt':
+        if is_numeric:
+            return incoming_numeric < value_numeric
+        return str(incoming_value) < str(value)
+    elif operator == 'ge':
+        if is_numeric:
+            return incoming_numeric >= value_numeric
+        return str(incoming_value) >= str(value)
+    elif operator == 'le':
+        if is_numeric:
+            return incoming_numeric <= value_numeric
+        return str(incoming_value) <= str(value)
+    elif operator == 'contains':
+        return str(value) in str(incoming_value)
+    
+    return False
+
+
+def check_day_filter(day_filter_node: Optional[Dict[str, Any]]) -> bool:
+    """
+    Check if current weekday matches the day filter.
+    day_filter format: {'days': [0, 1, 2, 3, 4]} where 0=Monday, 6=Sunday
+    """
+    if day_filter_node is None:
+        return True  # No filter means all days allowed
+    
+    allowed_days = day_filter_node.get('days', list(range(7)))
+    current_weekday = datetime.datetime.now().weekday()
+    
+    return current_weekday in allowed_days
+
+
+def evaluate_device_scenarios(db: Session, device_id: int, incoming_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Evaluate all active scenarios for a device's build and queue commands if conditions are met.
+    
+    Args:
+        db: Database session
+        device_id: ID of the device
+        incoming_data: Data received from the device
+        
+    Returns:
+        List of queued commands
+    """
+    queued_commands = []
+    
+    try:
+        # Get the device to find its build_id
+        device = db.query(Device).filter(Device.id == device_id).first()
+        if not device:
+            logger.warning(f"Device {device_id} not found for scenario evaluation")
+            return queued_commands
+        
+        build_id = device.build_id
+        
+        # Find all active scenarios for this build
+        active_scenarios = db.query(Scenario).filter(
+            Scenario.build_id == build_id,
+            Scenario.is_active == True
+        ).all()
+        
+        logger.info(f"Found {len(active_scenarios)} active scenarios for build {build_id}")
+        
+        for scenario in active_scenarios:
+            flow_data = scenario.flow_data
+            if not flow_data:
+                continue
+            
+            logger.debug(f"Evaluating scenario {scenario.id} ({scenario.machine_name})")
+            
+            # Parse flow_data to find nodes
+            nodes = flow_data.get('nodes', [])
+            
+            trigger_node = None
+            condition_node = None
+            day_filter_node = None
+            action_node = None
+            
+            for node in nodes:
+                node_type = node.get('type')
+                if node_type == 'trigger':
+                    trigger_node = node
+                elif node_type == 'condition':
+                    condition_node = node
+                elif node_type == 'day_filter':
+                    day_filter_node = node
+                elif node_type == 'action':
+                    action_node = node
+            
+            # Check trigger - verify trigger field exists in incoming_data
+            if trigger_node:
+                trigger_field = trigger_node.get('field')
+                if trigger_field and trigger_field not in incoming_data:
+                    logger.debug(f"Scenario {scenario.id}: trigger field '{trigger_field}' not in incoming data")
+                    continue
+            
+            # Check day filter
+            if not check_day_filter(day_filter_node):
+                logger.debug(f"Scenario {scenario.id}: day filter not matched")
+                continue
+            
+            # Check condition
+            if condition_node:
+                if not evaluate_condition(condition_node, incoming_data):
+                    logger.debug(f"Scenario {scenario.id}: condition not met")
+                    continue
+            
+            # If all conditions pass, execute action
+            if action_node:
+                command = action_node.get('command')
+                value = action_node.get('value')
+                target_device_id = action_node.get('target_device_id', device_id)
+                
+                if command:
+                    # Create command record
+                    device_command = DeviceCommand(
+                        device_id=target_device_id,
+                        command=command,
+                        value=str(value) if value else '',
+                        created_at=datetime.datetime.now().isoformat(),
+                        is_executed=False
+                    )
+                    db.add(device_command)
+                    queued_commands.append({
+                        'scenario_id': scenario.id,
+                        'scenario_name': scenario.machine_name,
+                        'command': command,
+                        'value': value,
+                        'target_device_id': target_device_id
+                    })
+                    logger.info(f"Scenario {scenario.id} ({scenario.machine_name}) triggered: command '{command}'={value} queued for device {target_device_id}")
+        
+        if queued_commands:
+            db.commit()
+            logger.info(f"Total {len(queued_commands)} commands queued for device {device_id}")
+        else:
+            logger.debug(f"No scenarios triggered for device {device_id}")
+            
+    except Exception as e:
+        logger.error(f"Error evaluating scenarios for device {device_id}: {e}")
+        db.rollback()
+    
+    return queued_commands
+
+
+async def _evaluate_scenarios_async(db: Session, device_id: int, incoming_data: Dict[str, Any]):
+    """
+    Async wrapper for evaluate_device_scenarios to run without blocking the main request.
+    Creates a new DB session for thread safety.
+    """
+    try:
+        # Создаем новую сессию БД для асинхронного выполнения
+        async_db = SessionLocal()
+        try:
+            result = evaluate_device_scenarios(async_db, device_id, incoming_data)
+            logger.info(f"Async scenario evaluation completed for device {device_id}: {len(result)} commands queued")
+        finally:
+            async_db.close()
+    except Exception as e:
+        logger.error(f"Error in async scenario evaluation for device {device_id}: {e}")
+
+
 @app.post("/{machine_name}/{device_id}/post_endpoint")
 async def device_post_endpoint(machine_name: str, device_id: int, request: Request, db: Session = Depends(get_db)):
     print(f"Device POST: machine_name={machine_name}, device_id={device_id}")
@@ -236,6 +443,10 @@ async def device_post_endpoint(machine_name: str, device_id: int, request: Reque
                 db.add(device_data_record)
         
         db.commit()  # Сохраняем изменения в базе
+        
+        # ИНТЕГРАЦИЯ: Вызываем evaluate_device_scenarios после сохранения данных
+        # Используем asyncio.create_task для асинхронного выполнения без блокировки
+        asyncio.create_task(_evaluate_scenarios_async(db, device_id, data))
         
         return {
             "status": "success", 
