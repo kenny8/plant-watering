@@ -110,7 +110,7 @@ class DeviceScenarioSetting(Base):
     )
     
     scenario = relationship("Scenario", backref="device_settings")
-    device = relationship("Device", back_populates="scenario_settings")
+    device = relationship("Device", back_populates="scenario_settings", foreign_keys=[device_id])
 
 
 Base.metadata.create_all(bind=engine)
