@@ -70,6 +70,9 @@ function AppContent() {
     } else if (currentPath.startsWith('/device-data')) {
       console.log('AppContent: Rendering DeviceData');
       return React.createElement(window.DeviceData);
+    } else if (currentPath.startsWith('/device-scenarios')) {
+      console.log('AppContent: Rendering DeviceScenariosPage');
+      return React.createElement(window.DeviceScenariosPage);
     } else {
       console.log('AppContent: Rendering Home');
       return React.createElement(window.Home, { onAddAssembly: handleAddAssembly });
@@ -119,7 +122,7 @@ function App() {
   const checkDependencies = () => {
     if (window.Login && window.AuthContext && window.Navbar && window.Home && 
         window.Settings && window.Devices && window.CreateBuild && window.Assemblies && 
-        window.EditBuild && window.DeviceData && window.ScenariosPage && window.ScenarioEditor) {
+        window.EditBuild && window.DeviceData && window.ScenariosPage && window.ScenarioEditor && window.DeviceScenariosPage) {
       console.log('App.jsx: All dependencies ready:', { 
         Login: window.Login, 
         AuthContext: window.AuthContext, 
@@ -132,7 +135,8 @@ function App() {
         EditBuild: window.EditBuild,
         DeviceData: window.DeviceData,
         ScenariosPage: window.ScenariosPage,
-        ScenarioEditor: window.ScenarioEditor
+        ScenarioEditor: window.ScenarioEditor,
+        DeviceScenariosPage: window.DeviceScenariosPage
       });
       setIsReady(true);
     } else if (Date.now() - startTime > 5000) {
@@ -148,7 +152,8 @@ function App() {
         EditBuild: window.EditBuild,
         DeviceData: window.DeviceData,
         ScenariosPage: window.ScenariosPage,
-        ScenarioEditor: window.ScenarioEditor
+        ScenarioEditor: window.ScenarioEditor,
+        DeviceScenariosPage: window.DeviceScenariosPage
       });
       setTimeoutReached(true);
     } else {
