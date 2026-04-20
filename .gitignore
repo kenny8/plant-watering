@@ -1,38 +1,8 @@
 ```
 # Build artifacts
 build/
-*.js
-*.jsx
-*.ts
-*.tsx
-*.css
-*.scss
-*.sass
-*.less
-*.min.js
-*.min.css
-*.map
+dist/
 
 # Dependencies
 node_modules/
-
-# Logs and temporary files
-*.log
-*.tmp
-*.temp
-
-# Environment variables
-.env
-.env.local
-*.env.*
-
-# Editors
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS generated files
-.DS_Store
-Thumbs.db
 ```

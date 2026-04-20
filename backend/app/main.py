@@ -675,6 +675,14 @@ async def save_token(request: TokenRequest, db: Session = Depends(get_db), token
 async def health():
     return {"status": "ok"}
 
+@app.get("/api/devices/{device_id}")
+async def get_device(device_id: int, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
+    """Получить устройство по ID"""
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    return device
+
 @app.delete("/api/devices/{device_id}")
 async def delete_device(device_id: int, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
     try:
