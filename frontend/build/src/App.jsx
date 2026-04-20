@@ -16,7 +16,7 @@ function AppContent() {
   const [currentPath, setCurrentPath] = useState(window.location.pathname);
   const [isCreateBuildOpen, setIsCreateBuildOpen] = useState(false);
   const [editingBuild, setEditingBuild] = useState(null);
-  const [isScenarioEditorOpen, setIsScenarioEditorOpen] = useState(false);
+  const [currentScenarioPath, setCurrentScenarioPath] = useState(null);
   const [editingScenarioId, setEditingScenarioId] = useState(null);
 
   useEffect(() => {
@@ -25,17 +25,17 @@ function AppContent() {
       setCurrentPath(window.location.pathname);
       setIsCreateBuildOpen(false); // Закрываем поп-ап при смене пути
       setEditingBuild(null); // Закрываем редактирование при смене пути
-      setIsScenarioEditorOpen(false); // Закрываем редактор сценариев при смене пути
+      setCurrentScenarioPath(null); // Закрываем редактор сценариев при смене пути
       setEditingScenarioId(null);
     };
     window.addEventListener('popstate', handlePopstate);
     return () => window.removeEventListener('popstate', handlePopstate);
   }, []);
 
-  // Проверяем, нужно ли открыть редактор сценариев
+  // Проверяем, нужно ли открыть редактор сценариев (страница)
   useEffect(() => {
     if (currentPath === '/scenarios/create' || currentPath.startsWith('/scenarios/edit/')) {
-      setIsScenarioEditorOpen(true);
+      setCurrentScenarioPath(currentPath);
       if (currentPath.startsWith('/scenarios/edit/')) {
         const id = currentPath.split('/scenarios/edit/')[1];
         setEditingScenarioId(id);
@@ -43,7 +43,7 @@ function AppContent() {
         setEditingScenarioId(null);
       }
     } else {
-      setIsScenarioEditorOpen(false);
+      setCurrentScenarioPath(null);
       setEditingScenarioId(null);
     }
   }, [currentPath]);
@@ -74,6 +74,25 @@ function AppContent() {
     } else if (currentPath === '/assemblies') {
       console.log('AppContent: Rendering Assemblies');
       return React.createElement(window.Assemblies, { onEditBuild: handleEditBuild });
+    } else if (currentPath === '/scenarios/create') {
+      console.log('AppContent: Rendering CreateScenarioPage (create)');
+      return React.createElement(window.CreateScenarioPage, {
+        scenarioId: null,
+        onBack: () => {
+          window.history.pushState({}, '', '/scenarios');
+          window.dispatchEvent(new Event('popstate'));
+        }
+      });
+    } else if (currentPath.startsWith('/scenarios/edit/')) {
+      console.log('AppContent: Rendering CreateScenarioPage (edit)');
+      const id = currentPath.split('/scenarios/edit/')[1];
+      return React.createElement(window.CreateScenarioPage, {
+        scenarioId: id,
+        onBack: () => {
+          window.history.pushState({}, '', '/scenarios');
+          window.dispatchEvent(new Event('popstate'));
+        }
+      });
     } else if (currentPath === '/scenarios') {
       console.log('AppContent: Rendering ScenariosPage');
       return React.createElement(window.ScenariosPage);
@@ -93,7 +112,7 @@ function AppContent() {
 
   console.log('AppContent: isCreateBuildOpen:', isCreateBuildOpen);
   console.log('AppContent: editingBuild:', editingBuild);
-  console.log('AppContent: isScenarioEditorOpen:', isScenarioEditorOpen);
+  console.log('AppContent: currentScenarioPath:', currentScenarioPath);
   console.log('AppContent: editingScenarioId:', editingScenarioId);
   
   return React.createElement(
@@ -118,18 +137,6 @@ function AppContent() {
         setEditingBuild(null);
       },
       onUpdate: handleUpdateBuild
-    }),
-    
-    // Поп-ап для редактора сценариев
-    isScenarioEditorOpen && React.createElement(window.ScenarioEditor, {
-      scenarioId: editingScenarioId,
-      onClose: () => {
-        console.log('AppContent: Closing ScenarioEditor');
-        setIsScenarioEditorOpen(false);
-        setEditingScenarioId(null);
-        window.history.pushState({}, '', '/scenarios');
-        window.dispatchEvent(new Event('popstate'));
-      }
     })
   );
 }
@@ -143,7 +150,7 @@ function App() {
   const checkDependencies = () => {
     if (window.Login && window.AuthContext && window.Navbar && window.Home && 
         window.Settings && window.Devices && window.CreateBuild && window.Assemblies && 
-        window.EditBuild && window.DeviceData && window.ScenariosPage && window.ScenarioEditor) {
+        window.EditBuild && window.DeviceData && window.ScenariosPage && window.CreateScenarioPage) {
       console.log('App.jsx: All dependencies ready:', { 
         Login: window.Login, 
         AuthContext: window.AuthContext, 
@@ -156,7 +163,7 @@ function App() {
         EditBuild: window.EditBuild,
         DeviceData: window.DeviceData,
         ScenariosPage: window.ScenariosPage,
-        ScenarioEditor: window.ScenarioEditor
+        CreateScenarioPage: window.CreateScenarioPage
       });
       setIsReady(true);
     } else if (Date.now() - startTime > 5000) {
@@ -172,7 +179,7 @@ function App() {
         EditBuild: window.EditBuild,
         DeviceData: window.DeviceData,
         ScenariosPage: window.ScenariosPage,
-        ScenarioEditor: window.ScenarioEditor
+        CreateScenarioPage: window.CreateScenarioPage
       });
       setTimeoutReached(true);
     } else {
