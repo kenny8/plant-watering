@@ -793,6 +793,18 @@ async def create_scenario(scenario: ScenarioCreate, db: Session = Depends(get_db
     db.add(db_scenario)
     db.commit()
     db.refresh(db_scenario)
+    
+    # Автоматически создаем записи в device_scenario_settings для всех устройств этой сборки
+    devices = db.query(Device).filter(Device.build_id == scenario.build_id).all()
+    for device in devices:
+        setting = DeviceScenarioSetting(
+            device_id=device.id,
+            scenario_id=db_scenario.id,
+            is_enabled=True
+        )
+        db.add(setting)
+    db.commit()
+    
     return db_scenario
 
 
@@ -824,6 +836,25 @@ async def update_scenario(id: int, scenario: ScenarioUpdate, db: Session = Depen
     
     db.commit()
     db.refresh(db_scenario)
+    
+    # Если изменилась сборка, обновляем device_scenario_settings
+    if scenario.build_id is not None and scenario.build_id != db_scenario.build_id:
+        # Удаляем старые записи для этого сценария
+        db.query(DeviceScenarioSetting).filter(
+            DeviceScenarioSetting.scenario_id == db_scenario.id
+        ).delete(synchronize_session=False)
+        
+        # Создаем новые записи для устройств новой сборки
+        devices = db.query(Device).filter(Device.build_id == scenario.build_id).all()
+        for device in devices:
+            setting = DeviceScenarioSetting(
+                device_id=device.id,
+                scenario_id=db_scenario.id,
+                is_enabled=True
+            )
+            db.add(setting)
+        db.commit()
+    
     return db_scenario
 
 
