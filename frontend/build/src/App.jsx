@@ -16,8 +16,6 @@ function AppContent() {
   const [currentPath, setCurrentPath] = useState(window.location.pathname);
   const [isCreateBuildOpen, setIsCreateBuildOpen] = useState(false);
   const [editingBuild, setEditingBuild] = useState(null);
-  const [isScenarioEditorOpen, setIsScenarioEditorOpen] = useState(false);
-  const [editingScenarioId, setEditingScenarioId] = useState(null);
 
   useEffect(() => {
     const handlePopstate = () => {
@@ -25,28 +23,10 @@ function AppContent() {
       setCurrentPath(window.location.pathname);
       setIsCreateBuildOpen(false); // Закрываем поп-ап при смене пути
       setEditingBuild(null); // Закрываем редактирование при смене пути
-      setIsScenarioEditorOpen(false); // Закрываем редактор сценариев при смене пути
-      setEditingScenarioId(null);
     };
     window.addEventListener('popstate', handlePopstate);
     return () => window.removeEventListener('popstate', handlePopstate);
   }, []);
-
-  // Проверяем, нужно ли открыть редактор сценариев
-  useEffect(() => {
-    if (currentPath === '/scenarios/create' || currentPath.startsWith('/scenarios/edit/')) {
-      setIsScenarioEditorOpen(true);
-      if (currentPath.startsWith('/scenarios/edit/')) {
-        const id = currentPath.split('/scenarios/edit/')[1];
-        setEditingScenarioId(id);
-      } else {
-        setEditingScenarioId(null);
-      }
-    } else {
-      setIsScenarioEditorOpen(false);
-      setEditingScenarioId(null);
-    }
-  }, [currentPath]);
 
   const handleAddAssembly = () => {
     console.log('AppContent: handleAddAssembly called');
@@ -77,6 +57,16 @@ function AppContent() {
     } else if (currentPath === '/scenarios') {
       console.log('AppContent: Rendering ScenariosPage');
       return React.createElement(window.ScenariosPage);
+    } else if (currentPath === '/scenarios/create' || currentPath.startsWith('/scenarios/edit/')) {
+      console.log('AppContent: Rendering ScenarioEditor');
+      const scenarioId = currentPath.startsWith('/scenarios/edit/') ? currentPath.split('/scenarios/edit/')[1] : null;
+      return React.createElement(window.ScenarioEditor, {
+        scenarioId: scenarioId,
+        onClose: () => {
+          window.history.pushState({}, '', '/');
+          window.dispatchEvent(new Event('popstate'));
+        }
+      });
     } else if (currentPath.startsWith('/device-data')) {
       console.log('AppContent: Rendering DeviceData');
       return React.createElement(window.DeviceData);
@@ -93,8 +83,6 @@ function AppContent() {
 
   console.log('AppContent: isCreateBuildOpen:', isCreateBuildOpen);
   console.log('AppContent: editingBuild:', editingBuild);
-  console.log('AppContent: isScenarioEditorOpen:', isScenarioEditorOpen);
-  console.log('AppContent: editingScenarioId:', editingScenarioId);
   
   return React.createElement(
     'div',
@@ -118,18 +106,6 @@ function AppContent() {
         setEditingBuild(null);
       },
       onUpdate: handleUpdateBuild
-    }),
-    
-    // Поп-ап для редактора сценариев
-    isScenarioEditorOpen && React.createElement(window.ScenarioEditor, {
-      scenarioId: editingScenarioId,
-      onClose: () => {
-        console.log('AppContent: Closing ScenarioEditor');
-        setIsScenarioEditorOpen(false);
-        setEditingScenarioId(null);
-        window.history.pushState({}, '', '/scenarios');
-        window.dispatchEvent(new Event('popstate'));
-      }
     })
   );
 }
