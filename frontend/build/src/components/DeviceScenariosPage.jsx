@@ -40,6 +40,10 @@ function DeviceScenariosPage() {
   };
 
   const handleToggle = async (scenarioId, currentStatus) => {
+    if (!deviceId) {
+      console.error('Device ID not set');
+      return;
+    }
     try {
       const token = localStorage.getItem('token');
       // Используем endpoint для переключения статуса сценария на устройстве
@@ -109,15 +113,7 @@ function DeviceScenariosPage() {
         ? React.createElement(
             'div',
             { className: 'text-center' },
-            React.createElement('p', { className: 'text-gray-600 mb-4' }, 'У этого устройства нет сценариев'),
-            React.createElement(
-              'button',
-              {
-                onClick: handleBack,
-                className: 'bg-gray-600 text-white py-2 px-4 rounded hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 transition duration-200'
-              },
-              'Назад'
-            )
+            React.createElement('p', { className: 'text-gray-600 mb-4' }, 'У этого устройства нет сценариев')
           )
         : React.createElement(
             'table',
@@ -130,8 +126,7 @@ function DeviceScenariosPage() {
                 null,
                 React.createElement('th', { className: 'py-3 px-4 text-left' }, 'ID'),
                 React.createElement('th', { className: 'py-3 px-4 text-left' }, 'Название'),
-                React.createElement('th', { className: 'py-3 px-4 text-left' }, 'Статус'),
-                React.createElement('th', { className: 'py-3 px-4 text-left' }, 'Переключатель')
+                React.createElement('th', { className: 'py-3 px-4 text-left' }, 'Статус')
               )
             ),
             React.createElement(
@@ -142,16 +137,7 @@ function DeviceScenariosPage() {
                   'tr',
                   { key: scenario.id, className: 'border-t hover:bg-gray-50' },
                   React.createElement('td', { className: 'py-3 px-4' }, scenario.id),
-                  React.createElement('td', { className: 'py-3 px-4' }, scenario.human_name || scenario.machine_name),
-                  React.createElement(
-                    'td',
-                    { className: 'py-3 px-4' },
-                    React.createElement(
-                      'span',
-                      { className: scenario.is_enabled ? 'text-green-600 font-semibold' : 'text-gray-500' },
-                      scenario.is_enabled ? 'Активен' : 'Неактивен'
-                    )
-                  ),
+                  React.createElement('td', { className: 'py-3 px-4' }, scenario.scenario?.human_name || scenario.human_name || scenario.machine_name || scenario.scenario?.machine_name),
                   React.createElement(
                     'td',
                     { className: 'py-3 px-4' },
