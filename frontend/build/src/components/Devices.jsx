@@ -126,8 +126,8 @@ function Devices() {
               React.createElement(
                 'tr',
                 null,
-                React.createElement('th', { className: 'py-3 px-4 text-left' }, 'ID устройства'),
-                React.createElement('th', { className: 'py-3 px-4 text-left' }, 'Человеческое имя'),
+                React.createElement('th', { className: 'py-3 px-4 text-left' }, 'ID'),
+                React.createElement('th', { className: 'py-3 px-4 text-left' }, 'Название'),
                 React.createElement('th', { className: 'py-3 px-4 text-left' }, 'Сборка'),
                 React.createElement('th', { className: 'py-3 px-4 text-left' }, 'Создано'),
                 React.createElement('th', { className: 'py-3 px-4 text-left' }, 'Действия')
@@ -163,7 +163,7 @@ function Devices() {
                         onClick: () => handleDeviceScenariosClick(device),
                         className: 'bg-purple-600 text-white py-1 px-3 rounded hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm'
                       },
-                      'Сценарии устройства'
+                      'Сценарии'
                     ),
                     React.createElement(
                       'button',
