@@ -115,7 +115,7 @@ class DeviceScenarioSetting(Base):
         {'mysql_engine': 'InnoDB'}  # Для MySQL совместимости
     )
     
-    scenario = relationship("Scenario", backref="device_settings")
+    scenario = relationship("Scenario", back_populates="device_settings", lazy="joined")
     device = relationship(
         "Device", 
         back_populates="scenario_settings",
