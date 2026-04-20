@@ -1,8 +1,10 @@
 ```
 # Build artifacts
 build/
-dist/
 
 # Dependencies
 node_modules/
+
+# Editors
+.vscode/
 ```
