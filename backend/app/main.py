@@ -714,6 +714,15 @@ async def delete_device(device_id: int, db: Session = Depends(get_db), token: st
         print(f"Error deleting device {device_id}: {e}")
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error deleting device: {str(e)}")
+
+@app.get("/api/devices/{device_id}", response_model=dict)
+async def get_device(device_id: int, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
+    """Получить информацию об устройстве по ID"""
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    return device
+
         
 @app.get("/api/devices/{device_id}/data")
 async def get_device_data(
