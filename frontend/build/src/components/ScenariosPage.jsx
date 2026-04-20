@@ -93,48 +93,40 @@ function ScenariosPage() {
 
   return React.createElement(
     'div',
-    { className: 'container mx-auto p-6' },
-    React.createElement('h1', { className: 'text-2xl font-bold text-gray-800 mb-6' }, 'Сценарии'),
+    { className: 'flex flex-col items-center min-h-screen bg-gray-100 py-8' },
     React.createElement(
       'div',
-      { className: 'bg-white shadow-md rounded-lg overflow-hidden' },
-      React.createElement(
-        'table',
-        { className: 'min-w-full divide-y divide-gray-200' },
-        React.createElement(
-          'thead',
-          { className: 'bg-gray-50' },
-          React.createElement(
-            'tr',
-            null,
-            React.createElement('th', { className: 'px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider' }, 'Название'),
-            React.createElement('th', { className: 'px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider' }, 'ID сборки'),
-            React.createElement('th', { className: 'px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider' }, 'Глобальный статус'),
-            React.createElement('th', { className: 'px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider' }, 'Действия')
-          )
-        ),
-        React.createElement(
-          'tbody',
-          { className: 'bg-white divide-y divide-gray-200' },
-          scenarios.length === 0
-            ? React.createElement(
+      { className: 'w-full max-w-4xl' },
+      React.createElement('h1', { className: 'text-2xl font-bold text-center text-blue-600 mb-6' }, 'Сценарии'),
+      scenarios.length === 0
+        ? React.createElement('p', { className: 'text-gray-600 text-center' }, 'Сценарии отсутствуют')
+        : React.createElement(
+            'table',
+            { className: 'w-full bg-white shadow-md rounded-lg overflow-hidden' },
+            React.createElement(
+              'thead',
+              { className: 'bg-blue-600 text-white' },
+              React.createElement(
                 'tr',
                 null,
-                React.createElement(
-                  'td',
-                  { colSpan: 4, className: 'px-6 py-4 text-center text-gray-500' },
-                  'Сценарии не найдены'
-                )
+                React.createElement('th', { className: 'py-3 px-4 text-left' }, 'Название'),
+                React.createElement('th', { className: 'py-3 px-4 text-left' }, 'ID сборки'),
+                React.createElement('th', { className: 'py-3 px-4 text-left' }, 'Глобальный статус'),
+                React.createElement('th', { className: 'py-3 px-4 text-left' }, 'Действия')
               )
-            : scenarios.map(scenario =>
+            ),
+            React.createElement(
+              'tbody',
+              null,
+              scenarios.map(scenario =>
                 React.createElement(
                   'tr',
-                  { key: scenario.id },
-                  React.createElement('td', { className: 'px-6 py-4 whitespace-nowrap' }, scenario.human_name || scenario.machine_name),
-                  React.createElement('td', { className: 'px-6 py-4 whitespace-nowrap' }, getBuildName(scenario.build_id)),
+                  { key: scenario.id, className: 'border-t hover:bg-gray-50' },
+                  React.createElement('td', { className: 'py-3 px-4' }, scenario.human_name || scenario.machine_name),
+                  React.createElement('td', { className: 'py-3 px-4' }, getBuildName(scenario.build_id)),
                   React.createElement(
                     'td',
-                    { className: 'px-6 py-4 whitespace-nowrap' },
+                    { className: 'py-3 px-4' },
                     React.createElement(
                       'button',
                       {
@@ -151,12 +143,12 @@ function ScenariosPage() {
                   ),
                   React.createElement(
                     'td',
-                    { className: 'px-6 py-4 whitespace-nowrap space-x-2' },
+                    { className: 'py-3 px-4 flex space-x-2' },
                     React.createElement(
                       'button',
                       {
                         onClick: () => handleEdit(scenario.id),
-                        className: 'text-blue-600 hover:text-blue-800'
+                        className: 'bg-green-600 text-white py-1 px-3 rounded hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 transition duration-200'
                       },
                       'Редактировать'
                     ),
@@ -164,15 +156,15 @@ function ScenariosPage() {
                       'button',
                       {
                         onClick: () => handleDelete(scenario.id),
-                        className: 'text-red-600 hover:text-red-800'
+                        className: 'bg-red-600 text-white py-1 px-3 rounded hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 transition duration-200'
                       },
-                      '🗑️'
+                      'Удалить'
                     )
                   )
                 )
               )
-        )
-      )
+            )
+          )
     )
   );
 }
