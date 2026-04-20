@@ -150,7 +150,7 @@ function App() {
   const checkDependencies = () => {
     if (window.Login && window.AuthContext && window.Navbar && window.Home && 
         window.Settings && window.Devices && window.CreateBuild && window.Assemblies && 
-        window.EditBuild && window.DeviceData && window.ScenariosPage && window.CreateScenarioPage) {
+        window.EditBuild && window.DeviceData && window.ScenariosPage && window.ScenarioEditor && window.CreateScenarioPage) {
       console.log('App.jsx: All dependencies ready:', { 
         Login: window.Login, 
         AuthContext: window.AuthContext, 
@@ -163,6 +163,7 @@ function App() {
         EditBuild: window.EditBuild,
         DeviceData: window.DeviceData,
         ScenariosPage: window.ScenariosPage,
+        ScenarioEditor: window.ScenarioEditor,
         CreateScenarioPage: window.CreateScenarioPage
       });
       setIsReady(true);
@@ -179,6 +180,7 @@ function App() {
         EditBuild: window.EditBuild,
         DeviceData: window.DeviceData,
         ScenariosPage: window.ScenariosPage,
+        ScenarioEditor: window.ScenarioEditor,
         CreateScenarioPage: window.CreateScenarioPage
       });
       setTimeoutReached(true);
