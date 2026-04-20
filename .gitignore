@@ -1,10 +1,4 @@
 ```
 # Build artifacts
-build/
-
-# Dependencies
-node_modules/
-
-# Editors
-.vscode/
+frontend/build/
 ```
