@@ -78,11 +78,6 @@ function ScenariosPage() {
     window.dispatchEvent(new Event('popstate'));
   };
 
-  const handleCreate = () => {
-    window.history.pushState({}, '', '/scenarios/create');
-    window.dispatchEvent(new Event('popstate'));
-  };
-
   const getBuildName = (buildId) => {
     const build = builds.find(b => b.id === buildId);
     return build ? build.human_name : `ID: ${buildId}`;
@@ -91,7 +86,7 @@ function ScenariosPage() {
   if (loading) {
     return React.createElement(
       'div',
-      { className: 'flex items-center justify-center min-h-screen' },
+      { className: 'container mx-auto p-6' },
       React.createElement('div', { className: 'text-xl' }, 'Загрузка...')
     );
   }
@@ -99,19 +94,7 @@ function ScenariosPage() {
   return React.createElement(
     'div',
     { className: 'container mx-auto p-6' },
-    React.createElement(
-      'div',
-      { className: 'flex justify-between items-center mb-6' },
-      React.createElement('h1', { className: 'text-2xl font-bold text-gray-800' }, 'Сценарии'),
-      React.createElement(
-        'button',
-        {
-          onClick: handleCreate,
-          className: 'bg-indigo-600 text-white py-2 px-4 rounded hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500'
-        },
-        'Создать сценарий'
-      )
-    ),
+    React.createElement('h1', { className: 'text-2xl font-bold text-gray-800 mb-6' }, 'Сценарии'),
     React.createElement(
       'div',
       { className: 'bg-white shadow-md rounded-lg overflow-hidden' },

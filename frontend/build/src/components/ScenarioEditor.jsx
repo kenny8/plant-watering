@@ -83,11 +83,9 @@ function ScenarioEditor({ scenarioId, onClose }) {
         });
       }
       
-      if (onClose) onClose();
-      else {
-        window.history.pushState({}, '', '/scenarios');
-        window.dispatchEvent(new Event('popstate'));
-      }
+      // После сохранения перенаправляем на главную страницу
+      window.history.pushState({}, '', '/');
+      window.dispatchEvent(new Event('popstate'));
     } catch (error) {
       console.error('Error saving scenario:', error);
     } finally {
@@ -98,17 +96,17 @@ function ScenarioEditor({ scenarioId, onClose }) {
   if (loading) {
     return React.createElement(
       'div',
-      { className: 'flex items-center justify-center min-h-screen' },
+      { className: 'container mx-auto p-6' },
       React.createElement('div', { className: 'text-xl' }, 'Загрузка...')
     );
   }
 
   return React.createElement(
     'div',
-    { className: 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50' },
+    { className: 'container mx-auto p-6' },
     React.createElement(
       'div',
-      { className: 'bg-white rounded-lg p-6 w-full max-w-md' },
+      { className: 'bg-white rounded-lg shadow-md p-6' },
       React.createElement(
         'h2',
         { className: 'text-xl font-bold mb-4 text-gray-800' },
@@ -188,7 +186,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
             {
               type: 'button',
               onClick: onClose ? onClose : () => {
-                window.history.pushState({}, '', '/scenarios');
+                window.history.pushState({}, '', '/');
                 window.dispatchEvent(new Event('popstate'));
               },
               className: 'px-4 py-2 text-gray-700 bg-gray-200 rounded hover:bg-gray-300 focus:outline-none'
