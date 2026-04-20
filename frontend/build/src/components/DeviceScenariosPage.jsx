@@ -39,19 +39,23 @@ function DeviceScenariosPage() {
     }
   };
 
-  const handleToggle = async (scenarioId, currentStatus) => {
+  const handleToggle = async (scenarioId, currentStatus) => { // Теперь сюда прилетает реальный ID сценария (6)
     if (!deviceId) {
       console.error('Device ID not set');
       return;
     }
     try {
       const token = localStorage.getItem('token');
-      // Используем endpoint для переключения статуса сценария на устройстве
+    
+      // Отправляем запрос с ID сценария (scenarioId = 6)
       await axios.patch(`/api/devices/${deviceId}/scenarios/${scenarioId}/toggle`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
+
+      // Обновляем локальный стейт. 
+      // Важно: сравниваем s.scenario_id, а не s.id!
       setScenarios(scenarios.map(s =>
-        s.id === scenarioId ? { ...s, is_enabled: !s.is_enabled } : s
+        s.scenario_id === scenarioId ? { ...s, is_enabled: !s.is_enabled } : s
       ));
     } catch (error) {
       console.error('Error toggling scenario:', error);
@@ -144,7 +148,7 @@ function DeviceScenariosPage() {
                     React.createElement(
                       'button',
                       {
-                        onClick: () => handleToggle(scenario.id, scenario.is_enabled),
+                        onClick: () => handleToggle(scenario.scenario_id, scenario.is_enabled),
                         className: `relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${scenario.is_enabled ? 'bg-green-600' : 'bg-gray-300'}`
                       },
                       React.createElement(
