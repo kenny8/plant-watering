@@ -10,60 +10,43 @@ dist/
 # Dependencies
 node_modules/
 
-# Environment
-.env
-.env.local
-.env.*
-
 # Editors
 .vscode/
 .idea/
-*.swp
-*.swo
 
-# Logs and temp files
+# Logs
 *.log
-*.tmp
+
+# Environment
+.env
+.env.local
+*.env.*
 
 # Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-
-# Compiled
-*.o
-*.obj
-*.so
-*.dll
-*.exe
-*.a
-*.out
-
-# Coverage
-coverage/
-htmlcov/
-.coverage
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Caching
-.cache/
-*.cache
-
-# Testing
-*.pytest_cache/
-.mypy_cache/
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
 .tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git/
+.mypy_cache/
+.pytest_cache/
+.hypothesis/
 
-# Java/Maven
-target/
-.gradle/
-*.class
-
-# Compressed
+# Compressed files
 *.zip
 *.gz
 *.tar
@@ -86,4 +69,8 @@ target/
 *.tar.bz2
 *.tar.xz
 *.tar.zst
+
+# System files
+.DS_Store
+Thumbs.db
 ```

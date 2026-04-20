@@ -108,6 +108,7 @@ function ScenariosPage() {
               React.createElement(
                 'tr',
                 null,
+                React.createElement('th', { className: 'py-3 px-4 text-left' }, 'ID'),
                 React.createElement('th', { className: 'py-3 px-4 text-left' }, 'Название'),
                 React.createElement('th', { className: 'py-3 px-4 text-left' }, 'Сборка'),
                 React.createElement('th', { className: 'py-3 px-4 text-left' }, 'Глобальный статус'),
@@ -121,6 +122,7 @@ function ScenariosPage() {
                 React.createElement(
                   'tr',
                   { key: scenario.id, className: 'border-t hover:bg-gray-50' },
+                  React.createElement('td', { className: 'py-3 px-4' }, scenario.id),
                   React.createElement('td', { className: 'py-3 px-4' }, scenario.human_name || scenario.machine_name),
                   React.createElement('td', { className: 'py-3 px-4' }, getBuildName(scenario.build_id)),
                   React.createElement(
