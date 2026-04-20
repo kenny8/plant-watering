@@ -1,4 +1,23 @@
 ```
 # Build artifacts
-frontend/build/
+build/
+*.js
+*.html
+
+# Dependencies
+node_modules/
+
+# Editors
+.vscode/
+.idea/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Environment
+.env
+.env.local
+*.env.*
 ```
