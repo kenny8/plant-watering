@@ -140,7 +140,7 @@ function DeviceScenariosPage() {
                 React.createElement(
                   'tr',
                   { key: scenario.id, className: 'border-t hover:bg-gray-50' },
-                  React.createElement('td', { className: 'py-3 px-4' }, scenario.id),
+                  React.createElement('td', { className: 'py-3 px-4' }, scenario.scenario_id),
                   React.createElement('td', { className: 'py-3 px-4' }, scenario.scenario?.human_name || scenario.human_name || scenario.machine_name || scenario.scenario?.machine_name),
                   React.createElement(
                     'td',
