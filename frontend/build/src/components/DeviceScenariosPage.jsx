@@ -42,16 +42,18 @@ function DeviceScenariosPage() {
   const handleToggle = async (scenarioId, currentStatus) => {
     try {
       const token = localStorage.getItem('token');
-      await axios.patch(`/api/scenarios/${scenarioId}/toggle`, {}, {
+      // Используем endpoint для переключения статуса сценария на устройстве
+      await axios.patch(`/api/devices/${deviceId}/scenarios/${scenarioId}/toggle`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setScenarios(scenarios.map(s => 
-        s.id === scenarioId ? { ...s, is_active: !currentStatus } : s
+      setScenarios(scenarios.map(s =>
+        s.id === scenarioId ? { ...s, is_enabled: !s.is_enabled } : s
       ));
     } catch (error) {
       console.error('Error toggling scenario:', error);
     }
   };
+
 
   const handleDelete = async (scenarioId) => {
     try {
@@ -146,8 +148,8 @@ function DeviceScenariosPage() {
                     { className: 'py-3 px-4' },
                     React.createElement(
                       'span',
-                      { className: scenario.is_active ? 'text-green-600 font-semibold' : 'text-gray-500' },
-                      scenario.is_active ? 'Активен' : 'Неактивен'
+                      { className: scenario.is_enabled ? 'text-green-600 font-semibold' : 'text-gray-500' },
+                      scenario.is_enabled ? 'Активен' : 'Неактивен'
                     )
                   ),
                   React.createElement(
@@ -156,13 +158,13 @@ function DeviceScenariosPage() {
                     React.createElement(
                       'button',
                       {
-                        onClick: () => handleToggle(scenario.id, scenario.is_active),
-                        className: `relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${scenario.is_active ? 'bg-green-600' : 'bg-gray-300'}`
+                        onClick: () => handleToggle(scenario.id, scenario.is_enabled),
+                        className: `relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${scenario.is_enabled ? 'bg-green-600' : 'bg-gray-300'}`
                       },
                       React.createElement(
                         'span',
                         {
-                          className: `inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${scenario.is_active ? 'translate-x-6' : 'translate-x-1'}`
+                          className: `inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${scenario.is_enabled ? 'translate-x-6' : 'translate-x-1'}`
                         }
                       )
                     )

@@ -240,6 +240,17 @@ async def get_or_create_device(machine_name: str, device_id: int, db: Session, h
             db.add(device)
             db.commit()
             db.refresh(device)
+
+            # Создаем записи в device_scenario_settings для всех сценариев этой сборки
+            scenarios = db.query(Scenario).filter(Scenario.build_id == build.id).all()
+            for scenario in scenarios:
+                setting = DeviceScenarioSetting(
+                    device_id=device.id,
+                    scenario_id=scenario.id,
+                    is_enabled=True
+                )
+                db.add(setting)
+            db.commit()
             print(f"Created new device: {device_id} for build: {machine_name}")
         else:
             # Обновляем last_seen и human_name если передан
@@ -874,6 +885,11 @@ async def delete_scenario(id: int, db: Session = Depends(get_db), token: str = D
     if not scenario:
         raise HTTPException(status_code=404, detail="Scenario not found")
     
+
+    # Сначала удаляем все записи в device_scenario_settings для этого сценария
+    db.query(DeviceScenarioSetting).filter(
+        DeviceScenarioSetting.scenario_id == id
+    ).delete(synchronize_session=False)
     db.delete(scenario)
     db.commit()
     return {"message": "Scenario deleted"}

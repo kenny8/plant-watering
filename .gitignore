@@ -1,67 +1,10 @@
-```gitignore
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Virtual environments
-venv/
-ENV/
-env/
-.venv/
-.env/
-
-# Logs
-*.log
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Environment
-.env
-.env.local
-*.env.*
-
-# Coverage
-.coverage
-coverage/
-htmlcov/
-
-# MyPy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# Pytest
-.pytest_cache/
-
-# OS
-.DS_Store
-Thumbs.db
 ```
+# Build artifacts
+build/
 
-Wait, let me reconsider - the only modified file is `backend/app/main.py` which is a Python source file. There are no build artifacts, dependencies, or temporary files in the changes provided. Following rule #6, since the changes contain only source files and no build artifacts, dependencies, or temp files, the output should be empty.
+# Dependencies
+node_modules/
 
-```gitignore
-
+# Editors
+.vscode/
 ```
