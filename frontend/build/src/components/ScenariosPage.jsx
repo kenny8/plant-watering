@@ -61,7 +61,6 @@ function ScenariosPage() {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Вы уверены, что хотите удалить этот сценарий?')) return;
     try {
       const token = localStorage.getItem('token');
       await axios.delete(`/api/scenarios/${id}`, {
@@ -110,7 +109,7 @@ function ScenariosPage() {
                 'tr',
                 null,
                 React.createElement('th', { className: 'py-3 px-4 text-left' }, 'Название'),
-                React.createElement('th', { className: 'py-3 px-4 text-left' }, 'ID сборки'),
+                React.createElement('th', { className: 'py-3 px-4 text-left' }, 'Сборка'),
                 React.createElement('th', { className: 'py-3 px-4 text-left' }, 'Глобальный статус'),
                 React.createElement('th', { className: 'py-3 px-4 text-left' }, 'Действия')
               )
