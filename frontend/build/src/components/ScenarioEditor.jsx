@@ -59,8 +59,19 @@ function ScenarioEditor({ scenarioId, onClose }) {
             reroute: editor.reroute,
             container: editor.container
           });
+
+          // 5. Инициализируем модуль по умолчанию (КРИТИЧЕСКИ ВАЖНО для addNode!)
+          console.log('Initializing default module...');
+          try {
+            editor.addModule('default', {});
+            editor.changeModule('default');
+            console.log('Current module:', editor.module);
+            console.log('Module version:', editor.version);
+          } catch (moduleError) {
+            console.error('Error initializing module:', moduleError);
+          }
           
-          // 5. Если есть flowData (из редактирования сценария), импортируем его
+          // 6. Если есть flowData (из редактирования сценария), импортируем его
           if (flowData) {
             console.log('Importing existing flowData...');
             try {
@@ -111,6 +122,51 @@ function ScenarioEditor({ scenarioId, onClose }) {
     };
   }, []); // Пустой массив - только при монтировании
 
+  // Отдельный эффект для принудительной инициализации ПОСЛЕ рендера контейнера
+  useEffect(() => {
+    const checkContainerAndInit = () => {
+      console.log('=== checkContainerAndInit ===');
+      console.log('drawflowContainerRef.current:', drawflowContainerRef.current);
+      console.log('editorRef.current:', editorRef.current);
+      
+      if (drawflowContainerRef.current && !editorRef.current) {
+        console.log('Container is ready but editor not initialized yet, forcing init...');
+        
+        try {
+          // Очищаем контейнер
+          drawflowContainerRef.current.innerHTML = '';
+          
+          // Создаем редактор
+          const editor = new window.Drawflow(drawflowContainerRef.current);
+          editorRef.current = editor;
+          
+          editor.reroute = true;
+          editor.reroute_fix_curvature = true;
+          editor.node_selected = 'drawflow_node_selected';
+          editor.start();
+          
+          editor.addModule('default', {});
+          editor.changeModule('default');
+          
+          console.log('✓ Editor initialized via container-ready effect');
+          console.log('Current module:', editor.module);
+          console.log('Module version:', editor.version);
+          
+          if (flowData) {
+            editor.import(flowData);
+          }
+        } catch (error) {
+          console.error('✗ Error in forced initialization:', error);
+        }
+      }
+    };
+    
+    // Ждем немного чтобы DOM точно отрендерился
+    const timer = setTimeout(checkContainerAndInit, 100);
+    
+    return () => clearTimeout(timer);
+  }, [flowData]);
+
   // Load build data and create nodes
   useEffect(() => {
     if (buildId && editorRef.current) {
@@ -152,6 +208,20 @@ function ScenarioEditor({ scenarioId, onClose }) {
       if (!build) return;
 
       const editor = editorRef.current;
+      
+      // Проверка и инициализация модуля перед добавлением узлов
+      if (!editor.module || !editor.version) {
+        console.log('Initializing module in loadBuildAndCreateNodes...');
+        try {
+          editor.addModule('default', {});
+          editor.changeModule('default');
+          console.log('Module initialized:', editor.module);
+        } catch (moduleError) {
+          console.error('Failed to initialize module in loadBuildAndCreateNodes:', moduleError);
+          return;
+        }
+      }
+      
       let yOffset = 50;
       let xOffset = 50;
 
@@ -244,6 +314,22 @@ function ScenarioEditor({ scenarioId, onClose }) {
     const editor = editorRef.current;
     console.log('Adding Condition node, editor instance:', editor);
     console.log('Editor methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(editor)));
+    console.log('Current module:', editor.module);
+    console.log('Module version:', editor.version);
+    
+    // Проверка модуля перед добавлением узла
+    if (!editor.module || !editor.version) {
+      console.error('ERROR: Module not initialized! Trying to initialize now...');
+      try {
+        editor.addModule('default', {});
+        editor.changeModule('default');
+        console.log('Module initialized on-the-fly:', editor.module);
+      } catch (moduleError) {
+        console.error('Failed to initialize module:', moduleError);
+        alert('Ошибка инициализации Drawflow. Пожалуйста, обновите страницу.');
+        return;
+      }
+    }
     
     const html = `
       <div class="drawflow_node_header bg-orange-500 text-white px-3 py-2 rounded-t-lg font-medium">
@@ -307,6 +393,22 @@ function ScenarioEditor({ scenarioId, onClose }) {
     const editor = editorRef.current;
     console.log('Adding Day of Week node, editor instance:', editor);
     console.log('Editor methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(editor)));
+    console.log('Current module:', editor.module);
+    console.log('Module version:', editor.version);
+    
+    // Проверка модуля перед добавлением узла
+    if (!editor.module || !editor.version) {
+      console.error('ERROR: Module not initialized! Trying to initialize now...');
+      try {
+        editor.addModule('default', {});
+        editor.changeModule('default');
+        console.log('Module initialized on-the-fly:', editor.module);
+      } catch (moduleError) {
+        console.error('Failed to initialize module:', moduleError);
+        alert('Ошибка инициализации Drawflow. Пожалуйста, обновите страницу.');
+        return;
+      }
+    }
     
     const days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
     const checkboxes = days.map((day, index) => `
@@ -366,6 +468,22 @@ function ScenarioEditor({ scenarioId, onClose }) {
     const editor = editorRef.current;
     console.log('Adding Time node, editor instance:', editor);
     console.log('Editor methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(editor)));
+    console.log('Current module:', editor.module);
+    console.log('Module version:', editor.version);
+    
+    // Проверка модуля перед добавлением узла
+    if (!editor.module || !editor.version) {
+      console.error('ERROR: Module not initialized! Trying to initialize now...');
+      try {
+        editor.addModule('default', {});
+        editor.changeModule('default');
+        console.log('Module initialized on-the-fly:', editor.module);
+      } catch (moduleError) {
+        console.error('Failed to initialize module:', moduleError);
+        alert('Ошибка инициализации Drawflow. Пожалуйста, обновите страницу.');
+        return;
+      }
+    }
     
     const html = `
       <div class="drawflow_node_header bg-orange-500 text-white px-3 py-2 rounded-t-lg font-medium">
