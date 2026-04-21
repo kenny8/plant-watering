@@ -31,14 +31,29 @@
     });
   </script>
   <style>
-    /* Drawflow container styles */
+    /* CRITICAL: Drawflow main container - must be position: relative and overflow: hidden */
     #drawflow {
-      position: relative;
-      overflow: hidden;
-      width: 100%;
-      height: 600px;
+      position: relative !important;
+      overflow: hidden !important;
+      width: 100% !important;
+      height: 600px !important;
       background: radial-gradient(#dbe2e9 1px, transparent 1px);
       background-size: 20px 20px;
+    }
+    
+    /* Drawflow parent wrapper - CRITICAL for proper dragging */
+    .drawflow-wrapper {
+      position: relative !important;
+      width: 100% !important;
+      height: 600px !important;
+      overflow: hidden !important;
+      background: radial-gradient(#dbe2e9 1px, transparent 1px);
+      background-size: 20px 20px;
+    }
+    
+    /* Drawflow internal canvas - must not have conflicting styles */
+    .drawflow .parent {
+      transform-origin: 0 0 !important;
     }
     
     /* Drawflow node styles - n8n style */

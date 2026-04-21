@@ -47,7 +47,6 @@ function ScenarioEditor({ scenarioId, onClose }) {
           console.log('Setting basic config...');
           editor.reroute = true;
           editor.reroute_fix_curvature = true;
-          editor.node_selected = 'drawflow_node_selected';
           
           // Отключаем force_first_input для разрешения множественных соединений
           editor.force_first_input = false;
@@ -166,7 +165,6 @@ function ScenarioEditor({ scenarioId, onClose }) {
           
           editor.reroute = true;
           editor.reroute_fix_curvature = true;
-          editor.node_selected = 'drawflow_node_selected';
           editor.force_first_input = false;
           editor.draggable_nodes = true;
           editor.start();
@@ -210,7 +208,15 @@ function ScenarioEditor({ scenarioId, onClose }) {
   // Load build data and create nodes - ВАЖНО: не очищать узлы перед загрузкой
   useEffect(() => {
     if (buildId && editorRef.current) {
-      loadBuildAndCreateNodes(buildId, false); // false = не очищать существующие узлы
+      // Проверяем, есть ли уже узлы в редакторе
+      const hasExistingNodes = Object.keys(editorRef.current.nodes || {}).length > 0;
+      
+      if (hasExistingNodes) {
+        console.log('Editor already has nodes, skipping automatic build load to preserve user-added nodes');
+      } else {
+        console.log('No existing nodes, loading build data...');
+        loadBuildAndCreateNodes(buildId, true);
+      }
     }
   }, [buildId]);
 
@@ -400,7 +406,21 @@ function ScenarioEditor({ scenarioId, onClose }) {
     const maxX = existingNodes && existingNodes.length > 0 
       ? Math.max(...existingNodes.map(n => n.pos_x)) 
       : 300;
-    const newY = 50 + (existingNodes.length * 50); // Смещаем по Y для каждого нового условия
+    // Находим свободное место по Y, проверяя занятые позиции
+    const occupiedYPositions = existingNodes
+      .filter(n => n.pos_x >= maxX - 100) // Узлы в той же колонке
+      .map(n => n.pos_y)
+      .sort((a, b) => a - b);
+    
+    let newY = 50;
+    const nodeHeight = 150; // Примерная высота узла
+    for (let i = 0; i < occupiedYPositions.length; i++) {
+      if (occupiedYPositions[i] > newY + nodeHeight) {
+        // Нашли промежуток, можно разместить здесь
+        break;
+      }
+      newY = occupiedYPositions[i] + nodeHeight + 20;
+    }
     
     const html = `
       <div class="drawflow_node_header bg-orange-500 text-white px-3 py-2 rounded-t-lg font-medium">
@@ -486,7 +506,21 @@ function ScenarioEditor({ scenarioId, onClose }) {
     const maxX = existingNodes && existingNodes.length > 0 
       ? Math.max(...existingNodes.map(n => n.pos_x)) 
       : 300;
-    const newY = 50 + (existingNodes.length * 50);
+    // Находим свободное место по Y, проверяя занятые позиции
+    const occupiedYPositions = existingNodes
+      .filter(n => n.pos_x >= maxX - 100) // Узлы в той же колонке
+      .map(n => n.pos_y)
+      .sort((a, b) => a - b);
+    
+    let newY = 50;
+    const nodeHeight = 150; // Примерная высота узла
+    for (let i = 0; i < occupiedYPositions.length; i++) {
+      if (occupiedYPositions[i] > newY + nodeHeight) {
+        // Нашли промежуток, можно разместить здесь
+        break;
+      }
+      newY = occupiedYPositions[i] + nodeHeight + 20;
+    }
     
     const days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
     const checkboxes = days.map((day, index) => `
@@ -568,7 +602,21 @@ function ScenarioEditor({ scenarioId, onClose }) {
     const maxX = existingNodes && existingNodes.length > 0 
       ? Math.max(...existingNodes.map(n => n.pos_x)) 
       : 300;
-    const newY = 50 + (existingNodes.length * 50);
+    // Находим свободное место по Y, проверяя занятые позиции
+    const occupiedYPositions = existingNodes
+      .filter(n => n.pos_x >= maxX - 100) // Узлы в той же колонке
+      .map(n => n.pos_y)
+      .sort((a, b) => a - b);
+    
+    let newY = 50;
+    const nodeHeight = 150; // Примерная высота узла
+    for (let i = 0; i < occupiedYPositions.length; i++) {
+      if (occupiedYPositions[i] > newY + nodeHeight) {
+        // Нашли промежуток, можно разместить здесь
+        break;
+      }
+      newY = occupiedYPositions[i] + nodeHeight + 20;
+    }
     
     const html = `
       <div class="drawflow_node_header bg-orange-500 text-white px-3 py-2 rounded-t-lg font-medium">
@@ -635,7 +683,21 @@ function ScenarioEditor({ scenarioId, onClose }) {
     const maxX = existingNodes && existingNodes.length > 0 
       ? Math.max(...existingNodes.map(n => n.pos_x)) 
       : 300;
-    const newY = 50 + (existingNodes.length * 50);
+    // Находим свободное место по Y, проверяя занятые позиции
+    const occupiedYPositions = existingNodes
+      .filter(n => n.pos_x >= maxX - 100) // Узлы в той же колонке
+      .map(n => n.pos_y)
+      .sort((a, b) => a - b);
+    
+    let newY = 50;
+    const nodeHeight = 150; // Примерная высота узла
+    for (let i = 0; i < occupiedYPositions.length; i++) {
+      if (occupiedYPositions[i] > newY + nodeHeight) {
+        // Нашли промежуток, можно разместить здесь
+        break;
+      }
+      newY = occupiedYPositions[i] + nodeHeight + 20;
+    }
     
     // Получаем список доступных полей из выбранной сборки
     const selectedBuild = builds.find(b => b.id == buildId);
@@ -708,7 +770,21 @@ function ScenarioEditor({ scenarioId, onClose }) {
     const maxX = existingNodes && existingNodes.length > 0 
       ? Math.max(...existingNodes.map(n => n.pos_x)) 
       : 300;
-    const newY = 50 + (existingNodes.length * 50);
+    // Находим свободное место по Y, проверяя занятые позиции
+    const occupiedYPositions = existingNodes
+      .filter(n => n.pos_x >= maxX - 100) // Узлы в той же колонке
+      .map(n => n.pos_y)
+      .sort((a, b) => a - b);
+    
+    let newY = 50;
+    const nodeHeight = 150; // Примерная высота узла
+    for (let i = 0; i < occupiedYPositions.length; i++) {
+      if (occupiedYPositions[i] > newY + nodeHeight) {
+        // Нашли промежуток, можно разместить здесь
+        break;
+      }
+      newY = occupiedYPositions[i] + nodeHeight + 20;
+    }
     
     // Получаем список доступных полей из выбранной сборки
     const selectedBuild = builds.find(b => b.id == buildId);
@@ -1006,11 +1082,17 @@ function ScenarioEditor({ scenarioId, onClose }) {
         React.createElement(
           'div',
           {
-            ref: drawflowContainerRef,
-            id: 'drawflow',
-            className: 'w-full h-[600px] border border-gray-300 rounded-lg',
-            style: {}
-          }
+            className: 'drawflow-wrapper'
+          },
+          React.createElement(
+            'div',
+            {
+              ref: drawflowContainerRef,
+              id: 'drawflow',
+              className: '',
+              style: {}
+            }
+          )
         )
       ),
       // Status toggle
