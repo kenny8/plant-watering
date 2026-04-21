@@ -47,7 +47,6 @@ function ScenarioEditor({ scenarioId, onClose }) {
           console.log('Setting basic config...');
           editor.reroute = true;
           editor.reroute_fix_curvature = true;
-          editor.node_selected = 'drawflow_node_selected';
           
           // Отключаем force_first_input для разрешения множественных соединений
           editor.force_first_input = false;
@@ -166,7 +165,6 @@ function ScenarioEditor({ scenarioId, onClose }) {
           
           editor.reroute = true;
           editor.reroute_fix_curvature = true;
-          editor.node_selected = 'drawflow_node_selected';
           editor.force_first_input = false;
           editor.draggable_nodes = true;
           editor.start();
@@ -1006,11 +1004,17 @@ function ScenarioEditor({ scenarioId, onClose }) {
         React.createElement(
           'div',
           {
-            ref: drawflowContainerRef,
-            id: 'drawflow',
-            className: 'w-full h-[600px] border border-gray-300 rounded-lg',
-            style: {}
-          }
+            className: 'drawflow-wrapper'
+          },
+          React.createElement(
+            'div',
+            {
+              ref: drawflowContainerRef,
+              id: 'drawflow',
+              className: '',
+              style: {}
+            }
+          )
         )
       ),
       // Status toggle
