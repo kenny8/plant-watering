@@ -182,10 +182,10 @@ function ScenarioEditor({ scenarioId, onClose }) {
       if (build.post_fields && Array.isArray(build.post_fields)) {
         build.post_fields.forEach((field, index) => {
           const html = `
-            <div class="drawflow_node_header bg-blue-500 text-white px-3 py-2 rounded-t-lg font-medium">
+            <div class="title-box" style="background:#3b82f6; color:white; padding:10px; border-radius:8px 8px 0 0; font-weight:bold;">
               📡 ${field.name || field.field_name}
             </div>
-            <div class="px-3 py-2 text-sm text-gray-600">
+            <div class="box" style="padding:10px;">
               <div><strong>Type:</strong> ${field.type || 'sensor'}</div>
               ${field.description ? `<div><strong>Desc:</strong> ${field.description}</div>` : ''}
             </div>
@@ -224,10 +224,10 @@ function ScenarioEditor({ scenarioId, onClose }) {
           }
 
           const html = `
-            <div class="drawflow_node_header bg-green-500 text-white px-3 py-2 rounded-t-lg font-medium">
+            <div class="title-box" style="background:#22c55e; color:white; padding:10px; border-radius:8px 8px 0 0; font-weight:bold;">
               ⚙️ ${field.name || field.field_name}
             </div>
-            <div class="px-3 py-2 text-sm text-gray-600">
+            <div class="box" style="padding:10px;">
               <div><strong>Type:</strong> ${field.type || 'command'}</div>
               ${field.description ? `<div><strong>Desc:</strong> ${field.description}</div>` : ''}
               ${botParamsHtml}
@@ -298,10 +298,10 @@ function ScenarioEditor({ scenarioId, onClose }) {
     const newY = 50 + (existingNodes.length * 50); // Смещаем по Y для каждого нового условия
     
     const html = `
-      <div class="drawflow_node_header bg-orange-500 text-white px-3 py-2 rounded-t-lg font-medium">
+      <div class="title-box" style="background:#f97316; color:white; padding:10px; border-radius:8px 8px 0 0; font-weight:bold;">
         🔀 Условие
       </div>
-      <div class="px-3 py-2 text-sm">
+      <div class="box" style="padding:10px;">
         <div class="mb-2">
           <select class="w-full px-2 py-1 border rounded text-xs condition-operator">
             <option value=">">&gt; (больше)</option>
@@ -392,10 +392,10 @@ function ScenarioEditor({ scenarioId, onClose }) {
     `).join('');
     
     const html = `
-      <div class="drawflow_node_header bg-orange-500 text-white px-3 py-2 rounded-t-lg font-medium">
+      <div class="title-box" style="background:#f97316; color:white; padding:10px; border-radius:8px 8px 0 0; font-weight:bold;">
         📅 День недели
       </div>
-      <div class="px-3 py-2 text-sm grid grid-cols-2 gap-1">
+      <div class="box" style="padding:10px;">
         ${checkboxes}
       </div>
     `;
@@ -466,10 +466,10 @@ function ScenarioEditor({ scenarioId, onClose }) {
     const newY = 50 + (existingNodes.length * 50);
     
     const html = `
-      <div class="drawflow_node_header bg-orange-500 text-white px-3 py-2 rounded-t-lg font-medium">
+      <div class="title-box" style="background:#f97316; color:white; padding:10px; border-radius:8px 8px 0 0; font-weight:bold;">
         🕐 Время
       </div>
-      <div class="px-3 py-2 text-sm">
+      <div class="box" style="padding:10px;">
         <input type="time" class="w-full px-2 py-1 border rounded text-xs time-input" />
       </div>
     `;
@@ -541,10 +541,10 @@ function ScenarioEditor({ scenarioId, onClose }) {
     ).join('');
     
     const html = `
-      <div class="drawflow_node_header bg-blue-500 text-white px-3 py-2 rounded-t-lg font-medium">
+      <div class="title-box" style="background:#3b82f6; color:white; padding:10px; border-radius:8px 8px 0 0; font-weight:bold;">
         📡 Данные (POST)
       </div>
-      <div class="px-3 py-2 text-sm">
+      <div class="box" style="padding:10px;">
         <div class="mb-2">
           <label class="block text-xs text-gray-600 mb-1">Поле:</label>
           <select class="w-full px-2 py-1 border rounded text-xs data-field-select">
@@ -614,10 +614,10 @@ function ScenarioEditor({ scenarioId, onClose }) {
     ).join('');
     
     const html = `
-      <div class="drawflow_node_header bg-green-500 text-white px-3 py-2 rounded-t-lg font-medium">
+      <div class="title-box" style="background:#22c55e; color:white; padding:10px; border-radius:8px 8px 0 0; font-weight:bold;">
         ⚙️ Действие (GET)
       </div>
-      <div class="px-3 py-2 text-sm">
+      <div class="box" style="padding:10px;">
         <div class="mb-2">
           <label class="block text-xs text-gray-600 mb-1">Команда:</label>
           <select class="w-full px-2 py-1 border rounded text-xs action-field-select">

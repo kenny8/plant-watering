@@ -55,9 +55,19 @@
       box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
     }
     
-    /* ВАЖНО: pointer-events none для всего содержимого узла, чтобы drag работал */
-    .drawflow .drawflow-node > div,
-    .drawflow_node_header {
+    /* ВАЖНО: pointer-events auto для самого узла, чтобы drag работал */
+    .drawflow .drawflow-node {
+      pointer-events: auto;
+      cursor: grab;
+    }
+    
+    .drawflow .drawflow-node:active {
+      cursor: grabbing;
+    }
+    
+    /* pointer-events none только для контента внутри, кроме инпутов */
+    .drawflow .drawflow-node .title-box,
+    .drawflow .drawflow-node .box {
       pointer-events: none;
     }
     
@@ -69,6 +79,7 @@
       pointer-events: auto;
       user-select: text;
       -webkit-user-select: text;
+      cursor: text;
     }
     
     /* Drawflow node styles - n8n style */
