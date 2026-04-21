@@ -24,181 +24,75 @@ function ScenarioEditor({ scenarioId, onClose }) {
 
   // Initialize Drawflow editor - ТОЛЬКО ОДИН РАЗ при монтировании
   useEffect(() => {
-    let timer;
+    console.log('=== Drawflow useEffect started ===');
     
-    const initDrawflow = () => {
-      console.log('=== initDrawflow called ===');
-      console.log('drawflowContainerRef.current:', drawflowContainerRef.current);
-      console.log('typeof window.Drawflow:', typeof window.Drawflow);
-      
-      if (drawflowContainerRef.current && typeof window.Drawflow !== 'undefined') {
-        try {
-          // 1. Очищаем HTML-контейнер перед созданием
-          console.log('Clearing container innerHTML...');
-          drawflowContainerRef.current.innerHTML = '';
-
-          // 2. Создаем новый экземпляр
-          console.log('Creating new Drawflow instance...');
-          const editor = new window.Drawflow(drawflowContainerRef.current);
-          editorRef.current = editor;
-          console.log('Drawflow instance created:', editor);
-
-          // 3. Базовые настройки
-          console.log('Setting basic config...');
-          editor.reroute = true;
-          editor.reroute_fix_curvature = true;
-          editor.node_selected = 'drawflow_node_selected';
-          
-          // Отключаем force_first_input для разрешения множественных соединений
-          editor.force_first_input = false;
-          
-          // Включаем режим перетаскивания узлов
-          editor.draggable_nodes = true;
-
-          // 4. КРИТИЧЕСКИ ВАЖНО: сначала start(), потом всё остальное
-          console.log('Calling editor.start()...');
-          editor.start(); 
-          
-          // Добавляем обработчики событий для отладки
-          editor.on('nodeCreated', (nodeId) => {
-            console.log('Node created:', nodeId);
-          });
-          editor.on('nodeRemoved', (nodeId) => {
-            console.log('Node removed:', nodeId);
-          });
-          editor.on('connectionCreated', (connection) => {
-            console.log('Connection created:', connection);
-          });
-          editor.on('connectionRemoved', (connection) => {
-            console.log('Connection removed:', connection);
-          });
-          editor.on('nodeSelected', (nodeId) => {
-            console.log('Node selected:', nodeId);
-          });
-          editor.on('nodeMoved', (nodeId) => {
-            console.log('Node moved:', nodeId, editor.nodes[nodeId]);
-          });
-          editor.on('dragStart', (nodeId) => {
-            console.log('Drag start:', nodeId);
-          });
-          editor.on('dragEnd', (nodeId) => {
-            console.log('Drag end:', nodeId);
-          });
-          
-          console.log('✓ Drawflow editor started successfully!');
-          console.log('Editor state after start:', {
-            hasNodes: Object.keys(editor.nodes || {}).length > 0,
-            reroute: editor.reroute,
-            container: editor.container
-          });
-
-          // 5. Инициализируем модуль по умолчанию (КРИТИЧЕСКИ ВАЖНО для addNode!)
-          console.log('Initializing default module...');
-          try {
-            editor.addModule('default', {});
-            editor.changeModule('default');
-            console.log('Current module:', editor.module);
-            console.log('Module version:', editor.version);
-          } catch (moduleError) {
-            console.error('Error initializing module:', moduleError);
-          }
-          
-          // 6. Если есть flowData (из редактирования сценария), импортируем его
-          if (flowData) {
-            console.log('Importing existing flowData...');
-            try {
-              editor.import(flowData);
-              console.log('✓ flowData imported');
-            } catch (error) {
-              console.error('✗ Error importing flow data:', error);
-            }
-          }
-          // buildId загрузится через отдельный useEffect и создаст узлы
-          
-          // 7. ДОБАВЛЯЕМ CSS СТИЛИ ДЛЯ КОРРЕКТНОЙ РАБОТЫ DRAG'N'DROP
-          console.log('Adding Drawflow CSS styles...');
-          if (!document.getElementById('drawflow-custom-styles')) {
-            const style = document.createElement('style');
-            style.id = 'drawflow-custom-styles';
-            style.textContent = `
-              /* Критически важные стили для работы перетаскивания */
-              .drawflow .drawflow-node {
-                background: white;
-                border: 1px solid #444;
-                min-width: 150px;
-                border-radius: 8px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-              }
-              
-              .drawflow .drawflow-node.selected {
-                border-color: #3b82f6;
-                box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
-              }
-              
-              /* Стили для заголовка и контента - pointer-events: auto для корректной работы drag'n'drop */
-              .drawflow_node_header,
-              .drawflow .drawflow-node > div {
-                pointer-events: auto;
-              }
-              
-              /* Разрешаем клики на инпуты и селекторы внутри карточек */
-              .drawflow .drawflow-node input,
-              .drawflow .drawflow-node select,
-              .drawflow .drawflow-node button,
-              .drawflow .drawflow-node textarea {
-                pointer-events: auto;
-                user-select: text;
-                -webkit-user-select: text;
-              }
-              
-              /* Запрещаем выделение текста при перетаскивании только для не-интерактивных элементов */
-              .drawflow .drawflow-node .drawflow_node_header {
-                user-select: none;
-                -webkit-user-select: none;
-              }
-            `;
-            document.head.appendChild(style);
-          }
-        } catch (error) {
-          console.error('✗ CRITICAL ERROR during Drawflow init:', error);
-          console.error('Error stack:', error.stack);
-          console.error('Error details:', {
-            message: error.message,
-            name: error.name,
-            stack: error.stack
-          });
-        }
-      } else {
-        console.log('Waiting for container or Drawflow library...');
-        console.log('Container ready?', !!drawflowContainerRef.current);
-        console.log('Drawflow loaded?', typeof window.Drawflow !== 'undefined');
-        timer = setTimeout(initDrawflow, 100);
+    if (!drawflowContainerRef.current) {
+      console.error('Container not ready');
+      return;
+    }
+    
+    if (typeof window.Drawflow === 'undefined') {
+      console.error('Drawflow library not loaded');
+      return;
+    }
+    
+    // Очищаем контейнер перед созданием
+    drawflowContainerRef.current.innerHTML = '';
+    
+    // Создаем новый экземпляр Drawflow
+    const editor = new window.Drawflow(drawflowContainerRef.current);
+    editorRef.current = editor;
+    console.log('Drawflow instance created:', editor);
+    
+    // Базовые настройки ДО start()
+    editor.reroute = true;
+    editor.reroute_fix_curvature = true;
+    editor.force_first_input = false;
+    editor.draggable_nodes = true;
+    
+    // ВАЖНО: Сначала start(), потом всё остальное
+    editor.start();
+    console.log('Drawflow editor started successfully!');
+    
+    // Добавляем обработчики событий
+    editor.on('nodeCreated', (nodeId) => console.log('Node created:', nodeId));
+    editor.on('nodeRemoved', (nodeId) => console.log('Node removed:', nodeId));
+    editor.on('connectionCreated', (connection) => console.log('Connection created:', connection));
+    editor.on('connectionRemoved', (connection) => console.log('Connection removed:', connection));
+    editor.on('nodeSelected', (nodeId) => console.log('Node selected:', nodeId));
+    editor.on('nodeMoved', (nodeId, nodeData) => console.log('Node moved:', nodeId, nodeData));
+    editor.on('dragStart', (nodeId) => console.log('Drag start:', nodeId));
+    editor.on('dragEnd', (nodeId) => console.log('Drag end:', nodeId));
+    
+    // Инициализируем модуль по умолчанию
+    editor.addModule('default', {});
+    editor.changeModule('default');
+    console.log('Current module:', editor.module);
+    
+    // Если есть flowData, импортируем его
+    if (flowData) {
+      try {
+        editor.import(flowData);
+        console.log('✓ flowData imported');
+      } catch (error) {
+        console.error('✗ Error importing flow data:', error);
       }
-    };
+    }
     
-    console.log('Starting Drawflow initialization...');
-    initDrawflow();
-
-    // ПРАВИЛЬНАЯ ОЧИСТКА ДЛЯ REACT
+    // ОЧИСТКА: вызываем stop() для удаления всех слушателей событий
     return () => {
-      console.log('Cleanup: clearing timer and stopping editor...');
-      if (timer) clearTimeout(timer);
+      console.log('Cleanup: stopping Drawflow editor...');
       if (editorRef.current) {
-        console.log('Stopping editor...');
         try {
-          // КРИТИЧЕСКИ ВАЖНО: вызываем stop() чтобы библиотека удалила свои слушатели событий
           editorRef.current.stop();
         } catch (e) {
           console.error('Error stopping editor:', e);
         }
         editorRef.current = null;
       }
-      // Очищаем контейнер при размонтировании
       if (drawflowContainerRef.current) {
-        console.log('Clearing container innerHTML on cleanup...');
         drawflowContainerRef.current.innerHTML = '';
       }
-      console.log('Cleanup complete');
     };
   }, []); // Пустой массив - только при монтировании
 

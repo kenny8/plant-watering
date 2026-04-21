@@ -55,13 +55,13 @@
       box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
     }
     
-    /* Стили для заголовка и контента - pointer-events: auto для корректной работы drag'n'drop */
-    .drawflow_node_header,
-    .drawflow .drawflow-node > div {
-      pointer-events: auto;
+    /* ВАЖНО: pointer-events none для всего содержимого узла, чтобы drag работал */
+    .drawflow .drawflow-node > div,
+    .drawflow_node_header {
+      pointer-events: none;
     }
     
-    /* Разрешаем клики на инпуты и селекторы внутри карточек */
+    /* Разрешаем клики только на интерактивные элементы внутри карточек */
     .drawflow .drawflow-node input,
     .drawflow .drawflow-node select,
     .drawflow .drawflow-node button,
@@ -69,12 +69,6 @@
       pointer-events: auto;
       user-select: text;
       -webkit-user-select: text;
-    }
-    
-    /* Запрещаем выделение текста при перетаскивании только для не-интерактивных элементов */
-    .drawflow .drawflow-node .drawflow_node_header {
-      user-select: none;
-      -webkit-user-select: none;
     }
     
     /* Drawflow node styles - n8n style */
