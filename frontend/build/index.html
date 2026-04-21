@@ -19,6 +19,91 @@
   <script src="https://unpkg.com/@babel/standalone@7.22.5/babel.min.js" defer></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/drawflow@0.0.59/dist/drawflow.min.css">
   <script src="https://cdn.jsdelivr.net/npm/drawflow@0.0.59/dist/drawflow.min.js"></script>
+  <style>
+    /* Drawflow container styles */
+    #drawflow {
+      position: relative;
+      overflow: hidden;
+    }
+    
+    /* Drawflow node styles - n8n style */
+    .drawflow .drawflow-node {
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+      padding: 0;
+      min-width: 200px;
+    }
+    
+    .drawflow .drawflow-node.selected {
+      border-color: #6366f1;
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+    }
+    
+    .drawflow .drawflow-node:hover {
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    }
+    
+    /* Node header colors */
+    .drawflow_node_header.bg-blue-500 {
+      background-color: #3b82f6 !important;
+    }
+    
+    .drawflow_node_header.bg-green-500 {
+      background-color: #22c55e !important;
+    }
+    
+    .drawflow_node_header.bg-orange-500 {
+      background-color: #f97316 !important;
+    }
+    
+    /* Connection line styles */
+    .drawflow .connection .main-path {
+      stroke: #6366f1;
+      stroke-width: 3px;
+    }
+    
+    .drawflow .connection .main-path:hover {
+      stroke: #4f46e5;
+      stroke-width: 4px;
+    }
+    
+    /* Delete button for connections */
+    .drawflow .connection .point.delete {
+      fill: #ef4444;
+    }
+    
+    /* Node input/output points */
+    .drawflow .drawflow-node .input,
+    .drawflow .drawflow-node .output {
+      background: #6366f1;
+      border: 2px solid white;
+      width: 12px;
+      height: 12px;
+    }
+    
+    .drawflow .drawflow-node .input:hover,
+    .drawflow .drawflow-node .output:hover {
+      background: #4f46e5;
+      transform: scale(1.2);
+    }
+    
+    /* Grid background pattern */
+    .drawflow-background {
+      background: radial-gradient(#dbe2e9 1px, transparent 1px);
+      background-size: 20px 20px;
+    }
+    
+    /* Toolbar buttons */
+    .drawflow-toolbar {
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 8px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+  </style>
 </head>
 <body class="bg-gray-100 text-gray-800">
   <div id="root"></div>
