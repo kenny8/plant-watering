@@ -19,11 +19,26 @@
   <script src="https://unpkg.com/@babel/standalone@7.22.5/babel.min.js" defer></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/drawflow@0.0.59/dist/drawflow.min.css">
   <script src="https://cdn.jsdelivr.net/npm/drawflow@0.0.59/dist/drawflow.min.js"></script>
+  <script>
+    // Verify Drawflow is loaded
+    window.addEventListener('load', () => {
+      console.log('Drawflow loaded:', typeof window.Drawflow);
+      if (typeof window.Drawflow !== 'undefined') {
+        console.log('Drawflow constructor available');
+      } else {
+        console.error('Drawflow NOT loaded!');
+      }
+    });
+  </script>
   <style>
     /* Drawflow container styles */
     #drawflow {
       position: relative;
       overflow: hidden;
+      width: 100%;
+      height: 600px;
+      background: radial-gradient(#dbe2e9 1px, transparent 1px);
+      background-size: 20px 20px;
     }
     
     /* Drawflow node styles - n8n style */

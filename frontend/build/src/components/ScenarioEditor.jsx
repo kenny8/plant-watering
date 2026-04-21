@@ -24,20 +24,53 @@ function ScenarioEditor({ scenarioId, onClose }) {
 
   // Initialize Drawflow editor
   useEffect(() => {
-    if (drawflowContainerRef.current && window.Drawflow) {
-      editorRef.current = new window.Drawflow(drawflowContainerRef.current);
-      editorRef.current.reroute = true;
-      editorRef.current.reroute_fix_curvature = true;
-      
-      // Set custom node styles
-      editorRef.current.node_selected = 'drawflow_node_selected';
-      
-      return () => {
-        if (editorRef.current) {
-          editorRef.current.clear();
+    const initDrawflow = () => {
+      console.log('Initializing Drawflow, container:', drawflowContainerRef.current, 'Drawflow:', typeof window.Drawflow);
+      if (drawflowContainerRef.current && typeof window.Drawflow !== 'undefined') {
+        try {
+          // Clear any existing editor
+          if (editorRef.current) {
+            editorRef.current.clear();
+          }
+          editorRef.current = new window.Drawflow(drawflowContainerRef.current);
+          editorRef.current.reroute = true;
+          editorRef.current.reroute_fix_curvature = true;
+          
+          // Set custom node styles
+          editorRef.current.node_selected = 'drawflow_node_selected';
+          
+          console.log('Drawflow editor initialized successfully:', editorRef.current);
+          
+          // Re-load build data if buildId is set
+          if (buildId) {
+            loadBuildAndCreateNodes(buildId);
+          }
+          
+          // Re-import flow data if exists
+          if (flowData) {
+            try {
+              editorRef.current.import(flowData);
+            } catch (error) {
+              console.error('Error importing flow data:', error);
+            }
+          }
+        } catch (error) {
+          console.error('Error initializing Drawflow:', error);
         }
-      };
-    }
+        
+        return () => {
+          if (editorRef.current) {
+            editorRef.current.clear();
+          }
+        };
+      } else {
+        console.warn('Drawflow not ready: container=', !!drawflowContainerRef.current, 'window.Drawflow=', typeof window.Drawflow);
+        // Retry after a short delay
+        setTimeout(initDrawflow, 100);
+      }
+    };
+    
+    initDrawflow();
   }, []);
 
   // Load build data and create nodes
@@ -163,6 +196,10 @@ function ScenarioEditor({ scenarioId, onClose }) {
   };
 
   const addConditionNode = () => {
+    if (!editorRef.current) {
+      alert('Редактор еще не инициализирован');
+      return;
+    }
     const editor = editorRef.current;
     const html = `
       <div class="drawflow_node_header bg-orange-500 text-white px-3 py-2 rounded-t-lg font-medium">
@@ -201,7 +238,12 @@ function ScenarioEditor({ scenarioId, onClose }) {
   };
 
   const addDayOfWeekNode = () => {
+    if (!editorRef.current) {
+      alert('Редактор еще не инициализирован');
+      return;
+    }
     const editor = editorRef.current;
+    console.log('Adding Day of Week node, editor:', editor);
     const days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
     const checkboxes = days.map((day, index) => `
       <label class="flex items-center space-x-1 text-xs">
@@ -235,7 +277,12 @@ function ScenarioEditor({ scenarioId, onClose }) {
   };
 
   const addTimeNode = () => {
+    if (!editorRef.current) {
+      alert('Редактор еще не инициализирован');
+      return;
+    }
     const editor = editorRef.current;
+    console.log('Adding Time node, editor:', editor);
     const html = `
       <div class="drawflow_node_header bg-orange-500 text-white px-3 py-2 rounded-t-lg font-medium">
         🕐 Время
@@ -429,7 +476,10 @@ function ScenarioEditor({ scenarioId, onClose }) {
               'button',
               {
                 type: 'button',
-                onClick: addConditionNode,
+                onClick: () => {
+                  console.log('Condition button clicked, editor:', editorRef.current);
+                  addConditionNode();
+                },
                 className: 'px-3 py-1 bg-orange-500 text-white text-sm rounded hover:bg-orange-600 focus:outline-none'
               },
               '+ Условие'
@@ -438,7 +488,10 @@ function ScenarioEditor({ scenarioId, onClose }) {
               'button',
               {
                 type: 'button',
-                onClick: addDayOfWeekNode,
+                onClick: () => {
+                  console.log('Day of Week button clicked, editor:', editorRef.current);
+                  addDayOfWeekNode();
+                },
                 className: 'px-3 py-1 bg-orange-500 text-white text-sm rounded hover:bg-orange-600 focus:outline-none'
               },
               '+ День недели'
@@ -447,7 +500,10 @@ function ScenarioEditor({ scenarioId, onClose }) {
               'button',
               {
                 type: 'button',
-                onClick: addTimeNode,
+                onClick: () => {
+                  console.log('Time button clicked, editor:', editorRef.current);
+                  addTimeNode();
+                },
                 className: 'px-3 py-1 bg-orange-500 text-white text-sm rounded hover:bg-orange-600 focus:outline-none'
               },
               '+ Время'
@@ -459,11 +515,8 @@ function ScenarioEditor({ scenarioId, onClose }) {
           {
             ref: drawflowContainerRef,
             id: 'drawflow',
-            className: 'w-full h-[600px] border border-gray-300 rounded-lg overflow-hidden',
-            style: {
-              background: 'radial-gradient(#dbe2e9 1px, transparent 1px)',
-              backgroundSize: '20px 20px'
-            }
+            className: 'w-full h-[600px] border border-gray-300 rounded-lg',
+            style: {}
           }
         )
       ),
