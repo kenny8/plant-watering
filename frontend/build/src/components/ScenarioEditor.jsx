@@ -27,50 +27,76 @@ function ScenarioEditor({ scenarioId, onClose }) {
     let timer;
     
     const initDrawflow = () => {
-      console.log('Initializing Drawflow...');
+      console.log('=== initDrawflow called ===');
+      console.log('drawflowContainerRef.current:', drawflowContainerRef.current);
+      console.log('typeof window.Drawflow:', typeof window.Drawflow);
       
       if (drawflowContainerRef.current && typeof window.Drawflow !== 'undefined') {
         try {
           // 1. ПРИНУДИТЕЛЬНО очищаем HTML-контейнер перед созданием
+          console.log('Clearing container innerHTML...');
           drawflowContainerRef.current.innerHTML = '';
 
           // 2. Создаем новый экземпляр
+          console.log('Creating new Drawflow instance...');
           const editor = new window.Drawflow(drawflowContainerRef.current);
           editorRef.current = editor;
+          console.log('Drawflow instance created:', editor);
 
           // 3. Базовые настройки
+          console.log('Setting basic config...');
           editor.reroute = true;
           editor.reroute_fix_curvature = true;
           editor.node_selected = 'drawflow_node_selected';
 
           // 4. КРИТИЧЕСКИ ВАЖНО: сначала start(), потом всё остальное
+          console.log('Calling editor.start()...');
           editor.start(); 
           
-          console.log('Drawflow editor started!');
+          console.log('✓ Drawflow editor started successfully!');
+          console.log('Editor state after start:', {
+            hasNodes: Object.keys(editor.nodes || {}).length > 0,
+            reroute: editor.reroute,
+            container: editor.container
+          });
           
           // 5. Если есть flowData (из редактирования сценария), импортируем его
           if (flowData) {
+            console.log('Importing existing flowData...');
             try {
               editor.import(flowData);
+              console.log('✓ flowData imported');
             } catch (error) {
-              console.error('Error importing flow data:', error);
+              console.error('✗ Error importing flow data:', error);
             }
           }
           // buildId загрузится через отдельный useEffect и создаст узлы
         } catch (error) {
-          console.error('Error during Drawflow init:', error);
+          console.error('✗ CRITICAL ERROR during Drawflow init:', error);
+          console.error('Error stack:', error.stack);
+          console.error('Error details:', {
+            message: error.message,
+            name: error.name,
+            stack: error.stack
+          });
         }
       } else {
+        console.log('Waiting for container or Drawflow library...');
+        console.log('Container ready?', !!drawflowContainerRef.current);
+        console.log('Drawflow loaded?', typeof window.Drawflow !== 'undefined');
         timer = setTimeout(initDrawflow, 100);
       }
     };
     
+    console.log('Starting Drawflow initialization...');
     initDrawflow();
 
     // ПРАВИЛЬНАЯ ОЧИСТКА ДЛЯ REACT
     return () => {
+      console.log('Cleanup: clearing timer and stopping editor...');
       if (timer) clearTimeout(timer);
       if (editorRef.current) {
+        console.log('Stopping editor...');
         if (typeof editorRef.current.stop === 'function') {
           editorRef.current.stop();
         }
@@ -78,8 +104,10 @@ function ScenarioEditor({ scenarioId, onClose }) {
       }
       // Очищаем контейнер при размонтировании
       if (drawflowContainerRef.current) {
+        console.log('Clearing container innerHTML on cleanup...');
         drawflowContainerRef.current.innerHTML = '';
       }
+      console.log('Cleanup complete');
     };
   }, []); // Пустой массив - только при монтировании
 
@@ -202,13 +230,21 @@ function ScenarioEditor({ scenarioId, onClose }) {
   };
 
   const addConditionNode = () => {
+    console.log('=== addConditionNode called ===');
+    console.log('editorRef.current:', editorRef.current);
+    console.log('typeof window.Drawflow:', typeof window.Drawflow);
+    
     if (!editorRef.current) {
-      console.error('Editor not initialized yet');
-      alert('Редактор еще не инициализирован, подождите немного');
+      console.error('ERROR: Editor not initialized yet! editorRef.current is null');
+      console.error('Drawflow loaded?', typeof window.Drawflow !== 'undefined');
+      console.error('Container ref?', drawflowContainerRef.current);
       return;
     }
+    
     const editor = editorRef.current;
-    console.log('Adding Condition node, editor:', editor);
+    console.log('Adding Condition node, editor instance:', editor);
+    console.log('Editor methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(editor)));
+    
     const html = `
       <div class="drawflow_node_header bg-orange-500 text-white px-3 py-2 rounded-t-lg font-medium">
         🔀 Условие
@@ -232,6 +268,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
     
     // addNode принимает 9 аргументов: name, inputs, outputs, x, y, class, data, html, className
     try {
+      console.log('Calling editor.addNode with args:', ['condition', 1, 1, 400, 50, 'condition', { operator: '>', value: 0 }, html, 'condition']);
       editor.addNode(
         'condition',
         1,
@@ -243,21 +280,34 @@ function ScenarioEditor({ scenarioId, onClose }) {
         html,
         'condition'
       );
-      console.log('Condition node added successfully');
+      console.log('✓ Condition node added successfully');
     } catch (error) {
-      console.error('Error adding condition node:', error);
-      alert('Ошибка добавления узла: ' + error.message);
+      console.error('✗ ERROR adding condition node:', error);
+      console.error('Error stack:', error.stack);
+      console.error('Error details:', {
+        message: error.message,
+        name: error.name,
+        stack: error.stack
+      });
     }
   };
 
   const addDayOfWeekNode = () => {
+    console.log('=== addDayOfWeekNode called ===');
+    console.log('editorRef.current:', editorRef.current);
+    console.log('typeof window.Drawflow:', typeof window.Drawflow);
+    
     if (!editorRef.current) {
-      console.error('Editor not initialized yet');
-      alert('Редактор еще не инициализирован, подождите немного');
+      console.error('ERROR: Editor not initialized yet! editorRef.current is null');
+      console.error('Drawflow loaded?', typeof window.Drawflow !== 'undefined');
+      console.error('Container ref?', drawflowContainerRef.current);
       return;
     }
+    
     const editor = editorRef.current;
-    console.log('Adding Day of Week node, editor:', editor);
+    console.log('Adding Day of Week node, editor instance:', editor);
+    console.log('Editor methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(editor)));
+    
     const days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
     const checkboxes = days.map((day, index) => `
       <label class="flex items-center space-x-1 text-xs">
@@ -277,6 +327,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
     
     // addNode принимает 9 аргументов: name, inputs, outputs, x, y, class, data, html, className
     try {
+      console.log('Calling editor.addNode with args:', ['dayofweek', 1, 1, 400, 250, 'dayofweek', { days: [] }, html, 'dayofweek']);
       editor.addNode(
         'dayofweek',
         1,
@@ -288,21 +339,34 @@ function ScenarioEditor({ scenarioId, onClose }) {
         html,
         'dayofweek'
       );
-      console.log('Day of Week node added successfully');
+      console.log('✓ Day of Week node added successfully');
     } catch (error) {
-      console.error('Error adding day of week node:', error);
-      alert('Ошибка добавления узла: ' + error.message);
+      console.error('✗ ERROR adding day of week node:', error);
+      console.error('Error stack:', error.stack);
+      console.error('Error details:', {
+        message: error.message,
+        name: error.name,
+        stack: error.stack
+      });
     }
   };
 
   const addTimeNode = () => {
+    console.log('=== addTimeNode called ===');
+    console.log('editorRef.current:', editorRef.current);
+    console.log('typeof window.Drawflow:', typeof window.Drawflow);
+    
     if (!editorRef.current) {
-      console.error('Editor not initialized yet');
-      alert('Редактор еще не инициализирован, подождите немного');
+      console.error('ERROR: Editor not initialized yet! editorRef.current is null');
+      console.error('Drawflow loaded?', typeof window.Drawflow !== 'undefined');
+      console.error('Container ref?', drawflowContainerRef.current);
       return;
     }
+    
     const editor = editorRef.current;
-    console.log('Adding Time node, editor:', editor);
+    console.log('Adding Time node, editor instance:', editor);
+    console.log('Editor methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(editor)));
+    
     const html = `
       <div class="drawflow_node_header bg-orange-500 text-white px-3 py-2 rounded-t-lg font-medium">
         🕐 Время
@@ -314,6 +378,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
     
     // addNode принимает 9 аргументов: name, inputs, outputs, x, y, class, data, html, className
     try {
+      console.log('Calling editor.addNode with args:', ['time', 1, 1, 400, 400, 'time', { time: '' }, html, 'time']);
       editor.addNode(
         'time',
         1,
@@ -325,10 +390,15 @@ function ScenarioEditor({ scenarioId, onClose }) {
         html,
         'time'
       );
-      console.log('Time node added successfully');
+      console.log('✓ Time node added successfully');
     } catch (error) {
-      console.error('Error adding time node:', error);
-      alert('Ошибка добавления узла: ' + error.message);
+      console.error('✗ ERROR adding time node:', error);
+      console.error('Error stack:', error.stack);
+      console.error('Error details:', {
+        message: error.message,
+        name: error.name,
+        stack: error.stack
+      });
     }
   };
 
