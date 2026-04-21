@@ -25,35 +25,30 @@ function ScenarioEditor({ scenarioId, onClose }) {
   // Initialize Drawflow editor
   useEffect(() => {
     let timer;
-
+    
     const initDrawflow = () => {
       console.log('Initializing Drawflow...');
       
       if (drawflowContainerRef.current && typeof window.Drawflow !== 'undefined') {
         try {
-          // 1. Обязательно очищаем старый HTML внутри контейнера, 
-          // чтобы Drawflow не дублировался
+          // 1. ПРИНУДИТЕЛЬНО очищаем HTML-контейнер перед созданием
           drawflowContainerRef.current.innerHTML = '';
 
-          // 2. Создаем экземпляр
+          // 2. Создаем новый экземпляр
           const editor = new window.Drawflow(drawflowContainerRef.current);
           editorRef.current = editor;
 
-          // 3. Настройки
+          // 3. Базовые настройки
           editor.reroute = true;
           editor.reroute_fix_curvature = true;
           editor.node_selected = 'drawflow_node_selected';
-          
-          // 4. ЗАПУСК (Критически важно вызвать ДО импорта или добавления узлов)
+
+          // 4. КРИТИЧЕСКИ ВАЖНО: сначала start(), потом всё остальное
           editor.start(); 
           
           console.log('Drawflow editor started!');
           
-          // 5. Загружаем данные, если они уже есть
-          if (buildId) {
-            loadBuildAndCreateNodes(buildId);
-          }
-          
+          // 5. Загружаем данные только если flowData есть (из существующего сценария)
           if (flowData) {
             try {
               editor.import(flowData);
@@ -61,27 +56,28 @@ function ScenarioEditor({ scenarioId, onClose }) {
               console.error('Error importing flow data:', error);
             }
           }
+          // buildId загрузится через отдельный useEffect
         } catch (error) {
-          console.error('Error initializing Drawflow:', error);
+          console.error('Error during Drawflow init:', error);
         }
       } else {
-        // Если Drawflow еще не загружен (например, скрипт в index.html еще не докачался)
         timer = setTimeout(initDrawflow, 100);
       }
     };
     
     initDrawflow();
 
-    // ПРАВИЛЬНАЯ ОЧИСТКА: React вызовет это при удалении компонента
+    // ПРАВИЛЬНАЯ ОЧИСТКА ДЛЯ REACT
     return () => {
       if (timer) clearTimeout(timer);
       if (editorRef.current) {
-        // У некоторых версий есть .stop(), если нет - просто очищаем
-        if (typeof editorRef.current.stop === 'function') editorRef.current.stop();
+        if (typeof editorRef.current.stop === 'function') {
+          editorRef.current.stop();
+        }
         editorRef.current = null;
       }
     };
-  }, []); // Пустой массив зависимостей - запускаем один раз при монтировании
+  }, []); // Пустой массив - только при монтировании
 
   // Load build data and create nodes
   useEffect(() => {
@@ -149,9 +145,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
             field.field_name || `trigger_${index}`,
             {},
             html,
-            'trigger',
-            false,
-            true
+            'trigger'
           );
         });
         xOffset += 250;
@@ -194,9 +188,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
             field.field_name || `action_${index}`,
             {},
             html,
-            'action',
-            false,
-            true
+            'action'
           );
         });
       }
@@ -212,7 +204,6 @@ function ScenarioEditor({ scenarioId, onClose }) {
     }
     const editor = editorRef.current;
     console.log('Adding Condition node, editor:', editor);
-    const nodeId = `condition_${Date.now()}`;
     const html = `
       <div class="drawflow_node_header bg-orange-500 text-white px-3 py-2 rounded-t-lg font-medium">
         🔀 Условие
@@ -234,6 +225,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
       </div>
     `;
     
+    // addNode принимает 9 аргументов: name, inputs, outputs, x, y, class, data, html, className
     editor.addNode(
       'condition',
       1,
@@ -243,9 +235,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
       'condition',
       { operator: '>', value: 0 },
       html,
-      'condition',
-      false,
-      true
+      'condition'
     );
   };
 
@@ -273,6 +263,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
       </div>
     `;
     
+    // addNode принимает 9 аргументов: name, inputs, outputs, x, y, class, data, html, className
     editor.addNode(
       'dayofweek',
       1,
@@ -282,9 +273,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
       'dayofweek',
       { days: [] },
       html,
-      'dayofweek',
-      false,
-      true
+      'dayofweek'
     );
   };
 
@@ -304,6 +293,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
       </div>
     `;
     
+    // addNode принимает 9 аргументов: name, inputs, outputs, x, y, class, data, html, className
     editor.addNode(
       'time',
       1,
@@ -313,9 +303,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
       'time',
       { time: '' },
       html,
-      'time',
-      false,
-      true
+      'time'
     );
   };
 
@@ -327,13 +315,23 @@ function ScenarioEditor({ scenarioId, onClose }) {
       const token = localStorage.getItem('token');
       const exportedData = editorRef.current.export();
       
+      // Проверка buildId перед отправкой
+      if (!buildId) {
+        alert('Пожалуйста, выберите сборку');
+        setSaving(false);
+        return;
+      }
+      
       const payload = { 
         human_name: humanName, 
         machine_name: machineName, 
         build_id: parseInt(buildId),
-        flow_data: exportedData,
+        // Сериализуем flow_data в JSON строку для бэкенда
+        flow_data: JSON.stringify(exportedData),
         is_active: isActive
       };
+      
+      console.log('Saving scenario with payload:', payload);
       
       if (scenarioId) {
         await axios.put(`/api/scenarios/${scenarioId}`, payload, {
@@ -350,6 +348,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
       window.dispatchEvent(new Event('popstate'));
     } catch (error) {
       console.error('Error saving scenario:', error);
+      alert('Ошибка при сохранении: ' + (error.response?.data?.detail || error.message));
     } finally {
       setSaving(false);
     }
