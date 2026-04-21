@@ -49,12 +49,29 @@ function ScenarioEditor({ scenarioId, onClose }) {
           editor.reroute_fix_curvature = true;
           editor.node_selected = 'drawflow_node_selected';
           
-          // Включаем режим соединения для нескольких условий
+          // Отключаем force_first_input для разрешения множественных соединений
           editor.force_first_input = false;
+          
+          // Включаем режим перетаскивания узлов
+          editor.draggable_nodes = true;
 
           // 4. КРИТИЧЕСКИ ВАЖНО: сначала start(), потом всё остальное
           console.log('Calling editor.start()...');
           editor.start(); 
+          
+          // Добавляем обработчики событий для отладки
+          editor.on('nodeCreated', (nodeId) => {
+            console.log('Node created:', nodeId);
+          });
+          editor.on('nodeRemoved', (nodeId) => {
+            console.log('Node removed:', nodeId);
+          });
+          editor.on('connectionCreated', (connection) => {
+            console.log('Connection created:', connection);
+          });
+          editor.on('connectionRemoved', (connection) => {
+            console.log('Connection removed:', connection);
+          }); 
           
           console.log('✓ Drawflow editor started successfully!');
           console.log('Editor state after start:', {
@@ -151,7 +168,22 @@ function ScenarioEditor({ scenarioId, onClose }) {
           editor.reroute_fix_curvature = true;
           editor.node_selected = 'drawflow_node_selected';
           editor.force_first_input = false;
+          editor.draggable_nodes = true;
           editor.start();
+          
+          // Добавляем обработчики событий для отладки
+          editor.on('nodeCreated', (nodeId) => {
+            console.log('Node created:', nodeId);
+          });
+          editor.on('nodeRemoved', (nodeId) => {
+            console.log('Node removed:', nodeId);
+          });
+          editor.on('connectionCreated', (connection) => {
+            console.log('Connection created:', connection);
+          });
+          editor.on('connectionRemoved', (connection) => {
+            console.log('Connection removed:', connection);
+          });
           
           editor.addModule('default', {});
           editor.changeModule('default');
@@ -234,11 +266,12 @@ function ScenarioEditor({ scenarioId, onClose }) {
       // Это позволяет добавлять узлы без удаления уже созданных условий
       if (clearExisting) {
         console.log('Clearing existing nodes before loading build data...');
-        // Получаем все ID узлов и удаляем их
+        // Получаем все ID узлов и удаляем их через стандартный метод removeNode
         const nodeIds = Object.keys(editor.nodes || {});
         nodeIds.forEach(nodeId => {
           try {
-            editor.removeNodeFromData(nodeId);
+            // Используем стандартный метод removeNode вместо removeNodeFromData
+            editor.removeNode(nodeId);
           } catch (e) {
             console.error('Error removing node:', e);
           }
@@ -387,30 +420,20 @@ function ScenarioEditor({ scenarioId, onClose }) {
         <div>
           <input type="number" class="w-full px-2 py-1 border rounded text-xs condition-value" placeholder="Значение" />
         </div>
-        <div class="mt-2">
-          <label class="flex items-center space-x-2 text-xs">
-            <input type="checkbox" class="condition-logic-type" value="AND" />
-            <span>И</span>
-          </label>
-          <label class="flex items-center space-x-2 text-xs">
-            <input type="checkbox" class="condition-logic-type" value="OR" />
-            <span>ИЛИ</span>
-          </label>
-        </div>
       </div>
     `;
     
     // addNode принимает 9 аргументов: name, inputs, outputs, x, y, class, data, html, typenode
     try {
-      console.log('Calling editor.addNode with args:', ['condition', 1, 2, maxX + 50, newY, 'condition', { operator: '>', value: 0, logic: 'AND' }, html, false]);
+      console.log('Calling editor.addNode with args:', ['condition', 1, 1, maxX + 50, newY, 'condition', { operator: '>', value: 0 }, html, false]);
       editor.addNode(
         'condition',
         1,
-        2, // 2 выхода для вариантов И/ИЛИ
+        1, // 1 выход (как у остальных)
         maxX + 50,
         newY,
         'condition',
-        { operator: '>', value: 0, logic: 'AND' },
+        { operator: '>', value: 0 },
         html,
         false
       );
