@@ -48,7 +48,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
           
           console.log('Drawflow editor started!');
           
-          // 5. Загружаем данные только если flowData есть (из существующего сценария)
+          // 5. Если есть flowData (из редактирования сценария), импортируем его
           if (flowData) {
             try {
               editor.import(flowData);
@@ -56,7 +56,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
               console.error('Error importing flow data:', error);
             }
           }
-          // buildId загрузится через отдельный useEffect
+          // buildId загрузится через отдельный useEffect и создаст узлы
         } catch (error) {
           console.error('Error during Drawflow init:', error);
         }
@@ -75,6 +75,10 @@ function ScenarioEditor({ scenarioId, onClose }) {
           editorRef.current.stop();
         }
         editorRef.current = null;
+      }
+      // Очищаем контейнер при размонтировании
+      if (drawflowContainerRef.current) {
+        drawflowContainerRef.current.innerHTML = '';
       }
     };
   }, []); // Пустой массив - только при монтировании
@@ -199,7 +203,8 @@ function ScenarioEditor({ scenarioId, onClose }) {
 
   const addConditionNode = () => {
     if (!editorRef.current) {
-      alert('Редактор еще не инициализирован');
+      console.error('Editor not initialized yet');
+      alert('Редактор еще не инициализирован, подождите немного');
       return;
     }
     const editor = editorRef.current;
@@ -226,22 +231,29 @@ function ScenarioEditor({ scenarioId, onClose }) {
     `;
     
     // addNode принимает 9 аргументов: name, inputs, outputs, x, y, class, data, html, className
-    editor.addNode(
-      'condition',
-      1,
-      1,
-      400,
-      50,
-      'condition',
-      { operator: '>', value: 0 },
-      html,
-      'condition'
-    );
+    try {
+      editor.addNode(
+        'condition',
+        1,
+        1,
+        400,
+        50,
+        'condition',
+        { operator: '>', value: 0 },
+        html,
+        'condition'
+      );
+      console.log('Condition node added successfully');
+    } catch (error) {
+      console.error('Error adding condition node:', error);
+      alert('Ошибка добавления узла: ' + error.message);
+    }
   };
 
   const addDayOfWeekNode = () => {
     if (!editorRef.current) {
-      alert('Редактор еще не инициализирован');
+      console.error('Editor not initialized yet');
+      alert('Редактор еще не инициализирован, подождите немного');
       return;
     }
     const editor = editorRef.current;
@@ -264,22 +276,29 @@ function ScenarioEditor({ scenarioId, onClose }) {
     `;
     
     // addNode принимает 9 аргументов: name, inputs, outputs, x, y, class, data, html, className
-    editor.addNode(
-      'dayofweek',
-      1,
-      1,
-      400,
-      250,
-      'dayofweek',
-      { days: [] },
-      html,
-      'dayofweek'
-    );
+    try {
+      editor.addNode(
+        'dayofweek',
+        1,
+        1,
+        400,
+        250,
+        'dayofweek',
+        { days: [] },
+        html,
+        'dayofweek'
+      );
+      console.log('Day of Week node added successfully');
+    } catch (error) {
+      console.error('Error adding day of week node:', error);
+      alert('Ошибка добавления узла: ' + error.message);
+    }
   };
 
   const addTimeNode = () => {
     if (!editorRef.current) {
-      alert('Редактор еще не инициализирован');
+      console.error('Editor not initialized yet');
+      alert('Редактор еще не инициализирован, подождите немного');
       return;
     }
     const editor = editorRef.current;
@@ -294,17 +313,23 @@ function ScenarioEditor({ scenarioId, onClose }) {
     `;
     
     // addNode принимает 9 аргументов: name, inputs, outputs, x, y, class, data, html, className
-    editor.addNode(
-      'time',
-      1,
-      1,
-      400,
-      400,
-      'time',
-      { time: '' },
-      html,
-      'time'
-    );
+    try {
+      editor.addNode(
+        'time',
+        1,
+        1,
+        400,
+        400,
+        'time',
+        { time: '' },
+        html,
+        'time'
+      );
+      console.log('Time node added successfully');
+    } catch (error) {
+      console.error('Error adding time node:', error);
+      alert('Ошибка добавления узла: ' + error.message);
+    }
   };
 
   const handleSave = async () => {
@@ -373,7 +398,17 @@ function ScenarioEditor({ scenarioId, onClose }) {
       setHumanName(scenario.human_name || '');
       setMachineName(scenario.machine_name || '');
       setBuildId(scenario.build_id || '');
-      setFlowData(scenario.flow_data || null);
+      // Парсим flow_data, если это строка JSON
+      let parsedFlowData = scenario.flow_data;
+      if (typeof scenario.flow_data === 'string') {
+        try {
+          parsedFlowData = JSON.parse(scenario.flow_data);
+        } catch (e) {
+          console.error('Error parsing flow_data:', e);
+          parsedFlowData = null;
+        }
+      }
+      setFlowData(parsedFlowData);
       setIsActive(scenario.is_active !== undefined ? scenario.is_active : true);
       setLoading(false);
     } catch (error) {
