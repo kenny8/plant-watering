@@ -24,34 +24,39 @@ function ScenarioEditor({ scenarioId, onClose }) {
 
   // Initialize Drawflow editor
   useEffect(() => {
+    let timer;
+
     const initDrawflow = () => {
-      console.log('Initializing Drawflow, container:', drawflowContainerRef.current, 'Drawflow:', typeof window.Drawflow);
+      console.log('Initializing Drawflow...');
+      
       if (drawflowContainerRef.current && typeof window.Drawflow !== 'undefined') {
         try {
-          // Clear any existing editor
-          if (editorRef.current) {
-            editorRef.current.clear();
-          }
-          editorRef.current = new window.Drawflow(drawflowContainerRef.current);
-          editorRef.current.reroute = true;
-          editorRef.current.reroute_fix_curvature = true;
+          // 1. Обязательно очищаем старый HTML внутри контейнера, 
+          // чтобы Drawflow не дублировался
+          drawflowContainerRef.current.innerHTML = '';
 
-          editorRef.current.start();
+          // 2. Создаем экземпляр
+          const editor = new window.Drawflow(drawflowContainerRef.current);
+          editorRef.current = editor;
+
+          // 3. Настройки
+          editor.reroute = true;
+          editor.reroute_fix_curvature = true;
+          editor.node_selected = 'drawflow_node_selected';
           
-          // Set custom node styles
-          editorRef.current.node_selected = 'drawflow_node_selected';
+          // 4. ЗАПУСК (Критически важно вызвать ДО импорта или добавления узлов)
+          editor.start(); 
           
-          console.log('Drawflow editor initialized successfully:', editorRef.current);
+          console.log('Drawflow editor started!');
           
-          // Re-load build data if buildId is set
+          // 5. Загружаем данные, если они уже есть
           if (buildId) {
             loadBuildAndCreateNodes(buildId);
           }
           
-          // Re-import flow data if exists
           if (flowData) {
             try {
-              editorRef.current.import(flowData);
+              editor.import(flowData);
             } catch (error) {
               console.error('Error importing flow data:', error);
             }
@@ -59,21 +64,24 @@ function ScenarioEditor({ scenarioId, onClose }) {
         } catch (error) {
           console.error('Error initializing Drawflow:', error);
         }
-        
-        return () => {
-          if (editorRef.current) {
-            editorRef.current.clear();
-          }
-        };
       } else {
-        console.warn('Drawflow not ready: container=', !!drawflowContainerRef.current, 'window.Drawflow=', typeof window.Drawflow);
-        // Retry after a short delay
-        setTimeout(initDrawflow, 100);
+        // Если Drawflow еще не загружен (например, скрипт в index.html еще не докачался)
+        timer = setTimeout(initDrawflow, 100);
       }
     };
     
     initDrawflow();
-  }, []);
+
+    // ПРАВИЛЬНАЯ ОЧИСТКА: React вызовет это при удалении компонента
+    return () => {
+      if (timer) clearTimeout(timer);
+      if (editorRef.current) {
+        // У некоторых версий есть .stop(), если нет - просто очищаем
+        if (typeof editorRef.current.stop === 'function') editorRef.current.stop();
+        editorRef.current = null;
+      }
+    };
+  }, []); // Пустой массив зависимостей - запускаем один раз при монтировании
 
   // Load build data and create nodes
   useEffect(() => {
