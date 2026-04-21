@@ -41,6 +41,46 @@
       background-size: 20px 20px;
     }
     
+    /* Критически важные стили для работы перетаскивания */
+    .drawflow .drawflow-node {
+      background: white;
+      border: 1px solid #444;
+      min-width: 150px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .drawflow .drawflow-node.selected {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
+    }
+    
+    /* pointer-events: none позволяет клику "проходить" сквозь контент к родителю-узлу */
+    .drawflow_node_header,
+    .drawflow .drawflow-node > div {
+      pointer-events: none;
+    }
+    
+    /* Разрешаем клики на инпуты и селекторы внутри карточек */
+    .drawflow .drawflow-node input,
+    .drawflow .drawflow-node select,
+    .drawflow .drawflow-node button,
+    .drawflow .drawflow-node textarea {
+      pointer-events: auto;
+    }
+    
+    /* Стили для точек входа/выхода */
+    .drawflow .drawflow-node .inputs,
+    .drawflow .drawflow-node .outputs {
+      width: 0;
+    }
+    
+    /* Убираем выделение текста при перетаскивании */
+    .drawflow .drawflow-node * {
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    
     /* Drawflow node styles - n8n style */
     .drawflow .drawflow-node {
       background: white;

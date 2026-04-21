@@ -1,9 +1,4 @@
 ```
 # Build artifacts
-build/
-dist/
-*.js.map
-*.css.map
-*.min.js
-*.min.css
+frontend/build/
 ```

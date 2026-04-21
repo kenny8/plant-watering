@@ -76,7 +76,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
             console.log('Node selected:', nodeId);
           });
           editor.on('nodeMoved', (nodeId) => {
-            console.log('Node moved:', nodeId);
+            console.log('Node moved:', nodeId, editor.nodes[nodeId]);
           });
           editor.on('dragStart', (nodeId) => {
             console.log('Drag start:', nodeId);
@@ -114,6 +114,55 @@ function ScenarioEditor({ scenarioId, onClose }) {
             }
           }
           // buildId загрузится через отдельный useEffect и создаст узлы
+          
+          // 7. ДОБАВЛЯЕМ CSS СТИЛИ ДЛЯ КОРРЕКТНОЙ РАБОТЫ DRAG'N'DROP
+          console.log('Adding Drawflow CSS styles...');
+          if (!document.getElementById('drawflow-custom-styles')) {
+            const style = document.createElement('style');
+            style.id = 'drawflow-custom-styles';
+            style.textContent = `
+              /* Критически важные стили для работы перетаскивания */
+              .drawflow .drawflow-node {
+                background: white;
+                border: 1px solid #444;
+                min-width: 150px;
+                border-radius: 8px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+              }
+              
+              .drawflow .drawflow-node.selected {
+                border-color: #3b82f6;
+                box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
+              }
+              
+              /* pointer-events: none позволяет клику "проходить" сквозь контент к родителю-узлу */
+              .drawflow_node_header,
+              .drawflow .drawflow-node > div {
+                pointer-events: none;
+              }
+              
+              /* Разрешаем клики на инпуты и селекторы внутри карточек */
+              .drawflow .drawflow-node input,
+              .drawflow .drawflow-node select,
+              .drawflow .drawflow-node button,
+              .drawflow .drawflow-node textarea {
+                pointer-events: auto;
+              }
+              
+              /* Стили для точек входа/выхода */
+              .drawflow .drawflow-node .inputs,
+              .drawflow .drawflow-node .outputs {
+                width: 0;
+              }
+              
+              /* Убираем выделение текста при перетаскивании */
+              .drawflow .drawflow-node * {
+                user-select: none;
+                -webkit-user-select: none;
+              }
+            `;
+            document.head.appendChild(style);
+          }
         } catch (error) {
           console.error('✗ CRITICAL ERROR during Drawflow init:', error);
           console.error('Error stack:', error.stack);
@@ -141,9 +190,8 @@ function ScenarioEditor({ scenarioId, onClose }) {
       if (editorRef.current) {
         console.log('Stopping editor...');
         try {
-          if (typeof editorRef.current.stop === 'function') {
-            editorRef.current.stop();
-          }
+          // Не вызываем stop() чтобы избежать ошибок с удалением элементов
+          // Просто обнуляем ссылку
         } catch (e) {
           console.error('Error stopping editor:', e);
         }
@@ -965,8 +1013,9 @@ function ScenarioEditor({ scenarioId, onClose }) {
           {
             ref: drawflowContainerRef,
             id: 'drawflow',
-            className: 'w-full h-[600px] border border-gray-300 rounded-lg',
-            style: {}
+            className: 'w-full h-[600px] border border-gray-300 rounded-lg parent-drawflow',
+            style: { position: 'relative', overflow: 'hidden' },
+            onDragOver: (e) => e.preventDefault()
           }
         )
       ),
