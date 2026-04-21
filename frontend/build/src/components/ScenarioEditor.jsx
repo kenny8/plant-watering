@@ -35,6 +35,8 @@ function ScenarioEditor({ scenarioId, onClose }) {
           editorRef.current = new window.Drawflow(drawflowContainerRef.current);
           editorRef.current.reroute = true;
           editorRef.current.reroute_fix_curvature = true;
+
+          editorRef.current.start();
           
           // Set custom node styles
           editorRef.current.node_selected = 'drawflow_node_selected';
