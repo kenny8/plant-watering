@@ -122,16 +122,18 @@ function ScenarioEditor({ scenarioId, onClose }) {
     }
   }, [buildId]);
 
-  // Import flow data when editing existing scenario - ИМПОРТИРУЕМ БЕЗ ОЧИСТКИ
-  // FlowData должен импортироваться только один раз при инициализации редактора
+  // Import flow data ONLY ONCE during initial editor setup - ИМПОРТИРУЕМ ТОЛЬКО ОДИН РАЗ
+  // FlowData должен импортироваться только один раз при первой загрузке сценария
+  const hasImportedFlowData = useRef(false);
+  
   useEffect(() => {
-    if (flowData && editorRef.current) {
+    if (flowData && editorRef.current && !hasImportedFlowData.current) {
       try {
-        console.log('Importing flowData (preserving any existing nodes)...');
-        // Просто импортируем flowData без предварительной очистки
-        // Drawflow сам разберется с узлами при импорте
+        console.log('Importing flowData (only on initial load)...');
+        hasImportedFlowData.current = true;
+        // Импортируем flowData только один раз
         editorRef.current.import(flowData);
-        console.log('✓ flowData imported');
+        console.log('✓ flowData imported successfully');
       } catch (error) {
         console.error('Error importing flow data:', error);
       }
@@ -995,7 +997,8 @@ function ScenarioEditor({ scenarioId, onClose }) {
         React.createElement(
           'div',
           {
-            className: 'drawflow-wrapper'
+            className: 'drawflow-wrapper',
+            key: 'drawflow-container-stable'
           },
           React.createElement(
             'div',

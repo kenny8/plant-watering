@@ -2,32 +2,24 @@
 # Build artifacts
 build/
 dist/
-*.js
-*.jsx
-*.ts
-*.tsx
-*.css
-*.scss
-*.sass
-*.less
+*.js.map
+*.css.map
 *.min.js
 *.min.css
-*.map
 
 # Dependencies
 node_modules/
 
-# Logs and temporary files
+# Logs and temp files
 *.log
 *.tmp
-*.temp
 
-# Environment variables
+# Environment
 .env
 .env.local
-.env.*
+*.env.*
 
-# Editor/IDE files
+# Editors
 .vscode/
 .idea/
 *.swp
@@ -37,9 +29,10 @@ node_modules/
 .DS_Store
 Thumbs.db
 
-# Python artifacts (if any Python files exist in the project)
+# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+.Python
 ```
