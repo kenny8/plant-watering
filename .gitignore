@@ -2,64 +2,44 @@
 # Build artifacts
 build/
 dist/
-*.js.map
-*.css.map
+*.js
+*.jsx
+*.ts
+*.tsx
+*.css
+*.scss
+*.sass
+*.less
 *.min.js
 *.min.css
+*.map
 
 # Dependencies
 node_modules/
 
-# Environment
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+
+# Environment variables
 .env
 .env.local
 .env.*
 
-# Editors
+# Editor/IDE files
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# Logs
-*.log
+# OS generated files
+.DS_Store
+Thumbs.db
 
-# Coverage
-coverage/
-htmlcov/
-.coverage
-
-# Python
+# Python artifacts (if any Python files exist in the project)
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.Python
-env/
-venv/
-.venv/
-pip-log.txt
-pip-delete-this-directory.txt
-.tox/
-.coverage*
-.nox/
-*.cover
-*.log
-.DS_Store
-Thumbs.db
-
-# Temporary files
-*.tmp
-*.temp
-*.bak
-*.backup
-
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
 ```
