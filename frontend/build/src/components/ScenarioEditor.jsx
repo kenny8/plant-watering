@@ -17,7 +17,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
   const [builds, setBuilds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [flowData, setFlowData] = useState(null);
+  // Убрали flowData state - теперь не используем его для синхронизации
   const [isActive, setIsActive] = useState(true);
   const editorRef = useRef(null);
   const drawflowContainerRef = useRef(null);
@@ -127,18 +127,18 @@ function ScenarioEditor({ scenarioId, onClose }) {
   const hasImportedFlowData = useRef(false);
   
   useEffect(() => {
-    if (flowData && editorRef.current && !hasImportedFlowData.current) {
-      try {
-        console.log('Importing flowData (only on initial load)...');
-        hasImportedFlowData.current = true;
-        // Импортируем flowData только один раз
-        editorRef.current.import(flowData);
-        console.log('✓ flowData imported successfully');
-      } catch (error) {
-        console.error('Error importing flow data:', error);
-      }
+    if (scenarioId && editorRef.current && !hasImportedFlowData.current) {
+      // Загружаем данные сценария и импортируем flow_data
+      fetchScenario(scenarioId).then((parsedFlowData) => {
+        if (parsedFlowData && editorRef.current) {
+          console.log('Importing flowData (only on initial load)...');
+          hasImportedFlowData.current = true;
+          editorRef.current.import(parsedFlowData);
+          console.log('✓ flowData imported successfully');
+        }
+      });
     }
-  }, [flowData]);
+  }, [scenarioId]);
 
   const fetchBuilds = async () => {
     try {
@@ -286,21 +286,13 @@ function ScenarioEditor({ scenarioId, onClose }) {
 
   const addConditionNode = () => {
     console.log('=== addConditionNode called ===');
-    console.log('editorRef.current:', editorRef.current);
-    console.log('typeof window.Drawflow:', typeof window.Drawflow);
     
     if (!editorRef.current) {
-      console.error('ERROR: Editor not initialized yet! editorRef.current is null');
-      console.error('Drawflow loaded?', typeof window.Drawflow !== 'undefined');
-      console.error('Container ref?', drawflowContainerRef.current);
+      console.error('ERROR: Editor not initialized yet!');
       return;
     }
     
     const editor = editorRef.current;
-    console.log('Adding Condition node, editor instance:', editor);
-    console.log('Editor methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(editor)));
-    console.log('Current module:', editor.module);
-    console.log('Module version:', editor.version);
     
     // Проверка модуля перед добавлением узла
     if (!editor.module || !editor.version) {
@@ -321,17 +313,17 @@ function ScenarioEditor({ scenarioId, onClose }) {
     const maxX = existingNodes && existingNodes.length > 0 
       ? Math.max(...existingNodes.map(n => n.pos_x)) 
       : 300;
-    // Находим свободное место по Y, проверяя занятые позиции
+    
+    // Находим свободное место по Y
+    let newY = 50;
+    const nodeHeight = 180;
     const occupiedYPositions = existingNodes
-      .filter(n => n.pos_x >= maxX - 100) // Узлы в той же колонке
+      .filter(n => n.pos_x >= maxX - 100)
       .map(n => n.pos_y)
       .sort((a, b) => a - b);
     
-    let newY = 50;
-    const nodeHeight = 150; // Примерная высота узла
     for (let i = 0; i < occupiedYPositions.length; i++) {
       if (occupiedYPositions[i] > newY + nodeHeight) {
-        // Нашли промежуток, можно разместить здесь
         break;
       }
       newY = occupiedYPositions[i] + nodeHeight + 20;
@@ -358,13 +350,12 @@ function ScenarioEditor({ scenarioId, onClose }) {
       </div>
     `;
     
-    // addNode принимает 9 аргументов: name, inputs, outputs, x, y, class, data, html, typenode
     try {
-      console.log('Calling editor.addNode with args:', ['condition', 1, 1, maxX + 50, newY, 'condition', { operator: '>', value: 0 }, html, false]);
+      // ДОБАВЛЯЕМ НОДУ БЕЗ ПЕРЕРИСОВКИ REACT
       editor.addNode(
         'condition',
         1,
-        1, // 1 выход (как у остальных)
+        1,
         maxX + 50,
         newY,
         'condition',
@@ -372,35 +363,21 @@ function ScenarioEditor({ scenarioId, onClose }) {
         html,
         false
       );
-      console.log('✓ Condition node added successfully');
+      console.log('✓ Condition node added successfully. Total nodes:', Object.keys(editor.drawflow[editor.module]?.data || {}).length);
     } catch (error) {
       console.error('✗ ERROR adding condition node:', error);
-      console.error('Error stack:', error.stack);
-      console.error('Error details:', {
-        message: error.message,
-        name: error.name,
-        stack: error.stack
-      });
     }
   };
 
   const addDayOfWeekNode = () => {
     console.log('=== addDayOfWeekNode called ===');
-    console.log('editorRef.current:', editorRef.current);
-    console.log('typeof window.Drawflow:', typeof window.Drawflow);
     
     if (!editorRef.current) {
-      console.error('ERROR: Editor not initialized yet! editorRef.current is null');
-      console.error('Drawflow loaded?', typeof window.Drawflow !== 'undefined');
-      console.error('Container ref?', drawflowContainerRef.current);
+      console.error('ERROR: Editor not initialized yet!');
       return;
     }
     
     const editor = editorRef.current;
-    console.log('Adding Day of Week node, editor instance:', editor);
-    console.log('Editor methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(editor)));
-    console.log('Current module:', editor.module);
-    console.log('Module version:', editor.version);
     
     // Проверка модуля перед добавлением узла
     if (!editor.module || !editor.version) {
@@ -421,17 +398,17 @@ function ScenarioEditor({ scenarioId, onClose }) {
     const maxX = existingNodes && existingNodes.length > 0 
       ? Math.max(...existingNodes.map(n => n.pos_x)) 
       : 300;
-    // Находим свободное место по Y, проверяя занятые позиции
+    
+    // Находим свободное место по Y
+    let newY = 50;
+    const nodeHeight = 180;
     const occupiedYPositions = existingNodes
-      .filter(n => n.pos_x >= maxX - 100) // Узлы в той же колонке
+      .filter(n => n.pos_x >= maxX - 100)
       .map(n => n.pos_y)
       .sort((a, b) => a - b);
     
-    let newY = 50;
-    const nodeHeight = 150; // Примерная высота узла
     for (let i = 0; i < occupiedYPositions.length; i++) {
       if (occupiedYPositions[i] > newY + nodeHeight) {
-        // Нашли промежуток, можно разместить здесь
         break;
       }
       newY = occupiedYPositions[i] + nodeHeight + 20;
@@ -454,9 +431,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
       </div>
     `;
     
-    // addNode принимает 9 аргументов: name, inputs, outputs, x, y, class, data, html, typenode
     try {
-      console.log('Calling editor.addNode with args:', ['dayofweek', 1, 1, maxX + 50, newY, 'dayofweek', { days: [] }, html, false]);
       editor.addNode(
         'dayofweek',
         1,
@@ -468,35 +443,21 @@ function ScenarioEditor({ scenarioId, onClose }) {
         html,
         false
       );
-      console.log('✓ Day of Week node added successfully');
+      console.log('✓ Day of Week node added successfully. Total nodes:', Object.keys(editor.drawflow[editor.module]?.data || {}).length);
     } catch (error) {
       console.error('✗ ERROR adding day of week node:', error);
-      console.error('Error stack:', error.stack);
-      console.error('Error details:', {
-        message: error.message,
-        name: error.name,
-        stack: error.stack
-      });
     }
   };
 
   const addTimeNode = () => {
     console.log('=== addTimeNode called ===');
-    console.log('editorRef.current:', editorRef.current);
-    console.log('typeof window.Drawflow:', typeof window.Drawflow);
     
     if (!editorRef.current) {
-      console.error('ERROR: Editor not initialized yet! editorRef.current is null');
-      console.error('Drawflow loaded?', typeof window.Drawflow !== 'undefined');
-      console.error('Container ref?', drawflowContainerRef.current);
+      console.error('ERROR: Editor not initialized yet!');
       return;
     }
     
     const editor = editorRef.current;
-    console.log('Adding Time node, editor instance:', editor);
-    console.log('Editor methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(editor)));
-    console.log('Current module:', editor.module);
-    console.log('Module version:', editor.version);
     
     // Проверка модуля перед добавлением узла
     if (!editor.module || !editor.version) {
@@ -517,17 +478,17 @@ function ScenarioEditor({ scenarioId, onClose }) {
     const maxX = existingNodes && existingNodes.length > 0 
       ? Math.max(...existingNodes.map(n => n.pos_x)) 
       : 300;
-    // Находим свободное место по Y, проверяя занятые позиции
+    
+    // Находим свободное место по Y
+    let newY = 50;
+    const nodeHeight = 180;
     const occupiedYPositions = existingNodes
-      .filter(n => n.pos_x >= maxX - 100) // Узлы в той же колонке
+      .filter(n => n.pos_x >= maxX - 100)
       .map(n => n.pos_y)
       .sort((a, b) => a - b);
     
-    let newY = 50;
-    const nodeHeight = 150; // Примерная высота узла
     for (let i = 0; i < occupiedYPositions.length; i++) {
       if (occupiedYPositions[i] > newY + nodeHeight) {
-        // Нашли промежуток, можно разместить здесь
         break;
       }
       newY = occupiedYPositions[i] + nodeHeight + 20;
@@ -542,9 +503,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
       </div>
     `;
     
-    // addNode принимает 9 аргументов: name, inputs, outputs, x, y, class, data, html, typenode
     try {
-      console.log('Calling editor.addNode with args:', ['time', 1, 1, maxX + 50, newY, 'time', { time: '' }, html, false]);
       editor.addNode(
         'time',
         1,
@@ -556,15 +515,9 @@ function ScenarioEditor({ scenarioId, onClose }) {
         html,
         false
       );
-      console.log('✓ Time node added successfully');
+      console.log('✓ Time node added successfully. Total nodes:', Object.keys(editor.drawflow[editor.module]?.data || {}).length);
     } catch (error) {
       console.error('✗ ERROR adding time node:', error);
-      console.error('Error stack:', error.stack);
-      console.error('Error details:', {
-        message: error.message,
-        name: error.name,
-        stack: error.stack
-      });
     }
   };
 
@@ -573,7 +526,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
     console.log('=== addDataNode called ===');
     
     if (!editorRef.current) {
-      console.error('ERROR: Editor not initialized yet! editorRef.current is null');
+      console.error('ERROR: Editor not initialized yet!');
       return;
     }
     
@@ -598,17 +551,17 @@ function ScenarioEditor({ scenarioId, onClose }) {
     const maxX = existingNodes && existingNodes.length > 0 
       ? Math.max(...existingNodes.map(n => n.pos_x)) 
       : 300;
-    // Находим свободное место по Y, проверяя занятые позиции
+    
+    // Находим свободное место по Y
+    let newY = 50;
+    const nodeHeight = 180;
     const occupiedYPositions = existingNodes
-      .filter(n => n.pos_x >= maxX - 100) // Узлы в той же колонке
+      .filter(n => n.pos_x >= maxX - 100)
       .map(n => n.pos_y)
       .sort((a, b) => a - b);
     
-    let newY = 50;
-    const nodeHeight = 150; // Примерная высота узла
     for (let i = 0; i < occupiedYPositions.length; i++) {
       if (occupiedYPositions[i] > newY + nodeHeight) {
-        // Нашли промежуток, можно разместить здесь
         break;
       }
       newY = occupiedYPositions[i] + nodeHeight + 20;
@@ -649,7 +602,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
         html,
         false
       );
-      console.log('✓ Data node added successfully');
+      console.log('✓ Data node added successfully. Total nodes:', Object.keys(editor.drawflow[editor.module]?.data || {}).length);
     } catch (error) {
       console.error('✗ ERROR adding data node:', error);
     }
@@ -822,12 +775,14 @@ function ScenarioEditor({ scenarioId, onClose }) {
           parsedFlowData = null;
         }
       }
-      setFlowData(parsedFlowData);
+      // Убрали setFlowData - теперь не используем state для синхронизации
       setIsActive(scenario.is_active !== undefined ? scenario.is_active : true);
       setLoading(false);
+      return parsedFlowData; // Возвращаем данные для импорта
     } catch (error) {
       console.error('Error fetching scenario:', error);
       setLoading(false);
+      return null;
     }
   };
 
@@ -997,8 +952,8 @@ function ScenarioEditor({ scenarioId, onClose }) {
         React.createElement(
           'div',
           {
-            className: 'drawflow-wrapper',
-            key: 'drawflow-container-stable'
+            className: 'drawflow-wrapper'
+            // Убрали key, чтобы контейнер не пересоздавался при каждом рендере
           },
           React.createElement(
             'div',
