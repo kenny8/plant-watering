@@ -122,6 +122,51 @@ function ScenarioEditor({ scenarioId, onClose }) {
     };
   }, []); // Пустой массив - только при монтировании
 
+  // Отдельный эффект для принудительной инициализации ПОСЛЕ рендера контейнера
+  useEffect(() => {
+    const checkContainerAndInit = () => {
+      console.log('=== checkContainerAndInit ===');
+      console.log('drawflowContainerRef.current:', drawflowContainerRef.current);
+      console.log('editorRef.current:', editorRef.current);
+      
+      if (drawflowContainerRef.current && !editorRef.current) {
+        console.log('Container is ready but editor not initialized yet, forcing init...');
+        
+        try {
+          // Очищаем контейнер
+          drawflowContainerRef.current.innerHTML = '';
+          
+          // Создаем редактор
+          const editor = new window.Drawflow(drawflowContainerRef.current);
+          editorRef.current = editor;
+          
+          editor.reroute = true;
+          editor.reroute_fix_curvature = true;
+          editor.node_selected = 'drawflow_node_selected';
+          editor.start();
+          
+          editor.addModule('default', {});
+          editor.changeModule('default');
+          
+          console.log('✓ Editor initialized via container-ready effect');
+          console.log('Current module:', editor.module);
+          console.log('Module version:', editor.version);
+          
+          if (flowData) {
+            editor.import(flowData);
+          }
+        } catch (error) {
+          console.error('✗ Error in forced initialization:', error);
+        }
+      }
+    };
+    
+    // Ждем немного чтобы DOM точно отрендерился
+    const timer = setTimeout(checkContainerAndInit, 100);
+    
+    return () => clearTimeout(timer);
+  }, [flowData]);
+
   // Load build data and create nodes
   useEffect(() => {
     if (buildId && editorRef.current) {

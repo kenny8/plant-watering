@@ -1,63 +1,50 @@
 ```
 # Build artifacts
 build/
-*.js
-*.jsx
-*.ts
-*.tsx
-*.css
-*.scss
-*.sass
+dist/
+*.js.map
+*.css.map
 *.min.js
 *.min.css
-*.map
+*.bundle.js
+*.bundle.css
+static/dist/
+public/build/
 
 # Dependencies
 node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# Logs and temp files
-*.log
-*.tmp
-*.swp
-
-# Environment
+# Environment variables
 .env
 .env.local
 .env.*
+!.env.example
 
-# Editors
+# IDE specific
 .vscode/
 .idea/
-
-# Coverage
-coverage/
-htmlcov/
-.coverage
-
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-*.so
-
-# Virtual environments
-venv/
-.venv/
-.env/
-
-# Testing
-.pytest_cache/
-.mypy_cache/
-
-# Distribution / packaging
-dist/
-build/
-*.egg-info/
-*.egg
+*.swp
+*.swo
+*~
 
 # OS generated files
 .DS_Store
 Thumbs.db
+ehthumbs.db
+Icon?
+.directory
+.Trashes
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Coverage
+coverage/
+.nyc_output/
 ```
