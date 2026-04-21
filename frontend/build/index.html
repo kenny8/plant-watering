@@ -55,10 +55,10 @@
       box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
     }
     
-    /* pointer-events: none позволяет клику "проходить" сквозь контент к родителю-узлу */
+    /* Стили для заголовка и контента - pointer-events: auto для корректной работы drag'n'drop */
     .drawflow_node_header,
     .drawflow .drawflow-node > div {
-      pointer-events: none;
+      pointer-events: auto;
     }
     
     /* Разрешаем клики на инпуты и селекторы внутри карточек */
@@ -67,16 +67,12 @@
     .drawflow .drawflow-node button,
     .drawflow .drawflow-node textarea {
       pointer-events: auto;
+      user-select: text;
+      -webkit-user-select: text;
     }
     
-    /* Стили для точек входа/выхода */
-    .drawflow .drawflow-node .inputs,
-    .drawflow .drawflow-node .outputs {
-      width: 0;
-    }
-    
-    /* Убираем выделение текста при перетаскивании */
-    .drawflow .drawflow-node * {
+    /* Запрещаем выделение текста при перетаскивании только для не-интерактивных элементов */
+    .drawflow .drawflow-node .drawflow_node_header {
       user-select: none;
       -webkit-user-select: none;
     }

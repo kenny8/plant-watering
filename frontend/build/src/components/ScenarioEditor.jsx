@@ -135,10 +135,10 @@ function ScenarioEditor({ scenarioId, onClose }) {
                 box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
               }
               
-              /* pointer-events: none позволяет клику "проходить" сквозь контент к родителю-узлу */
+              /* Стили для заголовка и контента - pointer-events: auto для корректной работы drag'n'drop */
               .drawflow_node_header,
               .drawflow .drawflow-node > div {
-                pointer-events: none;
+                pointer-events: auto;
               }
               
               /* Разрешаем клики на инпуты и селекторы внутри карточек */
@@ -147,16 +147,12 @@ function ScenarioEditor({ scenarioId, onClose }) {
               .drawflow .drawflow-node button,
               .drawflow .drawflow-node textarea {
                 pointer-events: auto;
+                user-select: text;
+                -webkit-user-select: text;
               }
               
-              /* Стили для точек входа/выхода */
-              .drawflow .drawflow-node .inputs,
-              .drawflow .drawflow-node .outputs {
-                width: 0;
-              }
-              
-              /* Убираем выделение текста при перетаскивании */
-              .drawflow .drawflow-node * {
+              /* Запрещаем выделение текста при перетаскивании только для не-интерактивных элементов */
+              .drawflow .drawflow-node .drawflow_node_header {
                 user-select: none;
                 -webkit-user-select: none;
               }
@@ -190,8 +186,8 @@ function ScenarioEditor({ scenarioId, onClose }) {
       if (editorRef.current) {
         console.log('Stopping editor...');
         try {
-          // Не вызываем stop() чтобы избежать ошибок с удалением элементов
-          // Просто обнуляем ссылку
+          // КРИТИЧЕСКИ ВАЖНО: вызываем stop() чтобы библиотека удалила свои слушатели событий
+          editorRef.current.stop();
         } catch (e) {
           console.error('Error stopping editor:', e);
         }
@@ -1014,7 +1010,12 @@ function ScenarioEditor({ scenarioId, onClose }) {
             ref: drawflowContainerRef,
             id: 'drawflow',
             className: 'w-full h-[600px] border border-gray-300 rounded-lg parent-drawflow',
-            style: { position: 'relative', overflow: 'hidden' },
+            style: { 
+              position: 'relative', 
+              overflow: 'hidden',
+              userSelect: 'none',
+              touchAction: 'none'
+            },
             onDragOver: (e) => e.preventDefault()
           }
         )
