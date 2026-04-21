@@ -247,7 +247,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
             field.field_name || `trigger_${index}`,
             {},
             html,
-            'trigger'
+            false
           );
         });
         xOffset += 250;
@@ -290,7 +290,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
             field.field_name || `action_${index}`,
             {},
             html,
-            'action'
+            false
           );
         });
       }
@@ -352,9 +352,9 @@ function ScenarioEditor({ scenarioId, onClose }) {
       </div>
     `;
     
-    // addNode принимает 9 аргументов: name, inputs, outputs, x, y, class, data, html, className
+    // addNode принимает 9 аргументов: name, inputs, outputs, x, y, class, data, html, typenode
     try {
-      console.log('Calling editor.addNode with args:', ['condition', 1, 1, 400, 50, 'condition', { operator: '>', value: 0 }, html, 'condition']);
+      console.log('Calling editor.addNode with args:', ['condition', 1, 1, 400, 50, 'condition', { operator: '>', value: 0 }, html, false]);
       editor.addNode(
         'condition',
         1,
@@ -364,7 +364,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
         'condition',
         { operator: '>', value: 0 },
         html,
-        'condition'
+        false
       );
       console.log('✓ Condition node added successfully');
     } catch (error) {
@@ -427,9 +427,9 @@ function ScenarioEditor({ scenarioId, onClose }) {
       </div>
     `;
     
-    // addNode принимает 9 аргументов: name, inputs, outputs, x, y, class, data, html, className
+    // addNode принимает 9 аргументов: name, inputs, outputs, x, y, class, data, html, typenode
     try {
-      console.log('Calling editor.addNode with args:', ['dayofweek', 1, 1, 400, 250, 'dayofweek', { days: [] }, html, 'dayofweek']);
+      console.log('Calling editor.addNode with args:', ['dayofweek', 1, 1, 400, 250, 'dayofweek', { days: [] }, html, false]);
       editor.addNode(
         'dayofweek',
         1,
@@ -439,7 +439,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
         'dayofweek',
         { days: [] },
         html,
-        'dayofweek'
+        false
       );
       console.log('✓ Day of Week node added successfully');
     } catch (error) {
@@ -494,9 +494,9 @@ function ScenarioEditor({ scenarioId, onClose }) {
       </div>
     `;
     
-    // addNode принимает 9 аргументов: name, inputs, outputs, x, y, class, data, html, className
+    // addNode принимает 9 аргументов: name, inputs, outputs, x, y, class, data, html, typenode
     try {
-      console.log('Calling editor.addNode with args:', ['time', 1, 1, 400, 400, 'time', { time: '' }, html, 'time']);
+      console.log('Calling editor.addNode with args:', ['time', 1, 1, 400, 400, 'time', { time: '' }, html, false]);
       editor.addNode(
         'time',
         1,
@@ -506,7 +506,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
         'time',
         { time: '' },
         html,
-        'time'
+        false
       );
       console.log('✓ Time node added successfully');
     } catch (error) {
