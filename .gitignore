@@ -4,23 +4,62 @@ build/
 dist/
 *.js.map
 *.css.map
+*.min.js
+*.min.css
+
 # Dependencies
 node_modules/
-# Cache directories
-.cache/
-.npm/
-.yarn/
+
 # Environment
 .env
 .env.local
 .env.*
+
 # Editors
 .vscode/
 .idea/
 *.swp
 *.swo
+
 # Logs
 *.log
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage*
+.nox/
+*.cover
+*.log
+.DS_Store
+Thumbs.db
+
 # Temporary files
 *.tmp
+*.temp
+*.bak
+*.backup
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
 ```

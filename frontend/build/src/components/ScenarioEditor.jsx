@@ -205,26 +205,32 @@ function ScenarioEditor({ scenarioId, onClose }) {
     return () => clearTimeout(timer);
   }, [flowData]);
   
-  // Load build data and create nodes - ВАЖНО: не очищать узлы перед загрузкой
+  // Load build data and create nodes - ТЕПЕРЬ ВСЕГДА ДОБАВЛЯЕМ БЕЗ ОЧИСТКИ
   useEffect(() => {
     if (buildId && editorRef.current) {
-      // Проверяем, есть ли уже узлы в редакторе
-      const hasExistingNodes = Object.keys(editorRef.current.nodes || {}).length > 0;
-      
-      if (hasExistingNodes) {
-        console.log('Editor already has nodes, skipping automatic build load to preserve user-added nodes');
-      } else {
-        console.log('No existing nodes, loading build data...');
-        loadBuildAndCreateNodes(buildId, true);
-      }
+      console.log('BuildId changed, loading build data WITHOUT clearing existing nodes...');
+      // Всегда передаем false - НЕ очищать существующие узлы
+      loadBuildAndCreateNodes(buildId, false);
     }
   }, [buildId]);
 
-  // Import flow data when editing existing scenario
+  // Import flow data when editing existing scenario - ТЕПЕРЬ ОЧИЩАЕМ ПЕРЕД ИМПОРТОМ
   useEffect(() => {
     if (flowData && editorRef.current) {
       try {
+        // Сначала очищаем все узлы перед импортом нового flowData
+        const editor = editorRef.current;
+        const nodeIds = Object.keys(editor.nodes || {});
+        nodeIds.forEach(nodeId => {
+          try {
+            editor.removeNode(nodeId);
+          } catch (e) {
+            console.error('Error removing node before import:', e);
+          }
+        });
+        // Теперь импортируем flowData
         editorRef.current.import(flowData);
+        console.log('✓ flowData imported after clearing existing nodes');
       } catch (error) {
         console.error('Error importing flow data:', error);
       }
@@ -243,7 +249,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
     }
   };
 
-  const loadBuildAndCreateNodes = async (id, clearExisting = true) => {
+  const loadBuildAndCreateNodes = async (id, clearExisting = false) => {
     try {
       const token = localStorage.getItem('token');
       const response = await axios.get(`/api/builds/${id}`, {
@@ -268,7 +274,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
         }
       }
       
-      // ВАЖНО: Если clearExisting = false, НЕ очищаем узлы - просто добавляем новые
+      // ТЕПЕРЬ ПО УМОЛЧАНИЮ НЕ ОЧИЩАЕМ узлы - просто добавляем новые
       // Это позволяет добавлять узлы без удаления уже созданных условий
       if (clearExisting) {
         console.log('Clearing existing nodes before loading build data...');
@@ -283,7 +289,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
           }
         });
       } else {
-        console.log('Preserving existing nodes (conditions, etc.) while adding build nodes...');
+        console.log('✓ Preserving existing nodes (conditions, etc.) while adding build nodes...');
       }
       
       let yOffset = 50;
