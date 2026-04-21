@@ -1,4 +1,26 @@
 ```
 # Build artifacts
-frontend/build/
+build/
+dist/
+*.js.map
+*.css.map
+# Dependencies
+node_modules/
+# Cache directories
+.cache/
+.npm/
+.yarn/
+# Environment
+.env
+.env.local
+.env.*
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+# Logs
+*.log
+# Temporary files
+*.tmp
 ```
