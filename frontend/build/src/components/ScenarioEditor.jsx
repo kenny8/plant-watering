@@ -22,7 +22,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
   const editorRef = useRef(null);
   const drawflowContainerRef = useRef(null);
 
-  // Initialize Drawflow editor
+  // Initialize Drawflow editor - ТОЛЬКО ОДИН РАЗ при монтировании
   useEffect(() => {
     let timer;
     
@@ -33,7 +33,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
       
       if (drawflowContainerRef.current && typeof window.Drawflow !== 'undefined') {
         try {
-          // 1. ПРИНУДИТЕЛЬНО очищаем HTML-контейнер перед созданием
+          // 1. Очищаем HTML-контейнер перед созданием
           console.log('Clearing container innerHTML...');
           drawflowContainerRef.current.innerHTML = '';
 
@@ -71,7 +71,19 @@ function ScenarioEditor({ scenarioId, onClose }) {
           });
           editor.on('connectionRemoved', (connection) => {
             console.log('Connection removed:', connection);
-          }); 
+          });
+          editor.on('nodeSelected', (nodeId) => {
+            console.log('Node selected:', nodeId);
+          });
+          editor.on('nodeMoved', (nodeId) => {
+            console.log('Node moved:', nodeId);
+          });
+          editor.on('dragStart', (nodeId) => {
+            console.log('Drag start:', nodeId);
+          });
+          editor.on('dragEnd', (nodeId) => {
+            console.log('Drag end:', nodeId);
+          });
           
           console.log('✓ Drawflow editor started successfully!');
           console.log('Editor state after start:', {
@@ -146,65 +158,17 @@ function ScenarioEditor({ scenarioId, onClose }) {
     };
   }, []); // Пустой массив - только при монтировании
 
-  // Отдельный эффект для принудительной инициализации ПОСЛЕ рендера контейнера
+  // Отдельный эффект для импорта flowData - УДАЛЕНО дублирование инициализации
   useEffect(() => {
-    const checkContainerAndInit = () => {
-      console.log('=== checkContainerAndInit ===');
-      console.log('drawflowContainerRef.current:', drawflowContainerRef.current);
-      console.log('editorRef.current:', editorRef.current);
-      
-      if (drawflowContainerRef.current && !editorRef.current) {
-        console.log('Container is ready but editor not initialized yet, forcing init...');
-        
-        try {
-          // Очищаем контейнер
-          drawflowContainerRef.current.innerHTML = '';
-          
-          // Создаем редактор
-          const editor = new window.Drawflow(drawflowContainerRef.current);
-          editorRef.current = editor;
-          
-          editor.reroute = true;
-          editor.reroute_fix_curvature = true;
-          editor.node_selected = 'drawflow_node_selected';
-          editor.force_first_input = false;
-          editor.draggable_nodes = true;
-          editor.start();
-          
-          // Добавляем обработчики событий для отладки
-          editor.on('nodeCreated', (nodeId) => {
-            console.log('Node created:', nodeId);
-          });
-          editor.on('nodeRemoved', (nodeId) => {
-            console.log('Node removed:', nodeId);
-          });
-          editor.on('connectionCreated', (connection) => {
-            console.log('Connection created:', connection);
-          });
-          editor.on('connectionRemoved', (connection) => {
-            console.log('Connection removed:', connection);
-          });
-          
-          editor.addModule('default', {});
-          editor.changeModule('default');
-          
-          console.log('✓ Editor initialized via container-ready effect');
-          console.log('Current module:', editor.module);
-          console.log('Module version:', editor.version);
-          
-          if (flowData) {
-            editor.import(flowData);
-          }
-        } catch (error) {
-          console.error('✗ Error in forced initialization:', error);
-        }
+    if (flowData && editorRef.current) {
+      try {
+        console.log('Importing flowData in separate effect...');
+        editorRef.current.import(flowData);
+        console.log('✓ flowData imported successfully');
+      } catch (error) {
+        console.error('Error importing flow data:', error);
       }
-    };
-    
-    // Ждем немного чтобы DOM точно отрендерился
-    const timer = setTimeout(checkContainerAndInit, 100);
-    
-    return () => clearTimeout(timer);
+    }
   }, [flowData]);
   
   // Load build data and create nodes - ВАЖНО: не очищать узлы перед загрузкой
@@ -214,16 +178,8 @@ function ScenarioEditor({ scenarioId, onClose }) {
     }
   }, [buildId]);
 
-  // Import flow data when editing existing scenario
-  useEffect(() => {
-    if (flowData && editorRef.current) {
-      try {
-        editorRef.current.import(flowData);
-      } catch (error) {
-        console.error('Error importing flow data:', error);
-      }
-    }
-  }, [flowData]);
+  // Import flow data when editing existing scenario - УДАЛЕНО дублирование
+  // (уже есть в useEffect на строке 156)
 
   const fetchBuilds = async () => {
     try {
@@ -267,7 +223,8 @@ function ScenarioEditor({ scenarioId, onClose }) {
       if (clearExisting) {
         console.log('Clearing existing nodes before loading build data...');
         // Получаем все ID узлов и удаляем их через стандартный метод removeNode
-        const nodeIds = Object.keys(editor.nodes || {});
+        // Копируем массив nodeIds, так как editor.nodes будет изменяться во время удаления
+        const nodeIds = [...Object.keys(editor.nodes || {})];
         nodeIds.forEach(nodeId => {
           try {
             // Используем стандартный метод removeNode вместо removeNodeFromData
