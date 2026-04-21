@@ -201,6 +201,8 @@ function ScenarioEditor({ scenarioId, onClose }) {
       return;
     }
     const editor = editorRef.current;
+    console.log('Adding Condition node, editor:', editor);
+    const nodeId = `condition_${Date.now()}`;
     const html = `
       <div class="drawflow_node_header bg-orange-500 text-white px-3 py-2 rounded-t-lg font-medium">
         🔀 Условие
@@ -228,7 +230,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
       1,
       400,
       50,
-      `condition_${Date.now()}`,
+      'condition',
       { operator: '>', value: 0 },
       html,
       'condition',
@@ -267,7 +269,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
       1,
       400,
       250,
-      `dayofweek_${Date.now()}`,
+      'dayofweek',
       { days: [] },
       html,
       'dayofweek',
@@ -298,7 +300,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
       1,
       400,
       400,
-      `time_${Date.now()}`,
+      'time',
       { time: '' },
       html,
       'time',
