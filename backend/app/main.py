@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.security import OAuth2PasswordBearer
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+import json
 from sqlalchemy import create_engine, Column, Integer, String, JSON, Text, Boolean, ForeignKey, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session, relationship
@@ -152,15 +153,38 @@ class ScenarioCreate(BaseModel):
     human_name: str
     machine_name: str
     build_id: int
+    # flow_data может приходить как dict или как JSON строка - парсим оба варианта
     flow_data: Optional[dict] = None
     is_active: bool = True
+    
+    @field_validator('flow_data', mode='before')
+    @classmethod
+    def parse_flow_data(cls, value):
+        if isinstance(value, str):
+            try:
+                return json.loads(value)
+            except json.JSONDecodeError:
+                raise ValueError("Invalid JSON string for flow_data")
+        return value
 
 
 class ScenarioUpdate(BaseModel):
     human_name: str = None
     machine_name: str = None
+    build_id: int = None
+    # flow_data может приходить как dict или как JSON строка - парсим оба варианта
     flow_data: Optional[dict] = None
     is_active: bool = None
+    
+    @field_validator('flow_data', mode='before')
+    @classmethod
+    def parse_flow_data(cls, value):
+        if isinstance(value, str):
+            try:
+                return json.loads(value)
+            except json.JSONDecodeError:
+                raise ValueError("Invalid JSON string for flow_data")
+        return value
 
 
 class ScenarioResponse(BaseModel):
