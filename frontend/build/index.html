@@ -59,16 +59,18 @@
     /* Drawflow node styles - n8n style */
     .drawflow .drawflow-node {
       background: white;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+      border: 1px solid #cacaca;
+      -webkit-box-shadow: 0 2px 15px 2px #cacaca;
+      box-shadow: 0 2px 15px 2px #cacaca;
       padding: 0;
       min-width: 200px;
     }
     
     .drawflow .drawflow-node.selected {
-      border-color: #6366f1;
-      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+      background: white;
+      border: 1px solid #4ea9ff;
+      -webkit-box-shadow: 0 2px 20px 2px #4ea9ff;
+      box-shadow: 0 2px 20px 2px #4ea9ff;
     }
     
     .drawflow .drawflow-node:hover {
@@ -130,11 +132,11 @@
     }
 
     .drawflow .drawflow-node .output {
-      right: 10px;
+      right: 7px;
     }
 
     .drawflow .drawflow-node .input {
-      left: -10px;
+      left: -7px;
       background: white;
     }
     /* Custom node type styles */
