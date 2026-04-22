@@ -189,12 +189,12 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     };
   }, []); // Пустой массив - только при монтировании
 
-  // Load build data and create nodes - ТЕПЕРЬ ВСЕГДА ДОБАВЛЯЕМ БЕЗ ОЧИСТКИ
+  // Load build data ONLY for reference (DO NOT create nodes automatically)
   useEffect(() => {
     if (buildIdRef.current && editorRef.current) {
-      console.log('BuildId changed, loading build data WITHOUT clearing existing nodes...');
-      // Всегда передаем false - НЕ очищать существующие узлы
-      loadBuildAndCreateNodes(buildIdRef.current, false);
+      console.log('BuildId changed, loading build data for reference ONLY (NOT creating nodes)...');
+      // Загружаем данные сборки только для справки (чтобы кнопки "+ Данные" и "+ Действия" знали какие поля доступны)
+      loadBuildDataForReference(buildIdRef.current);
     }
   }, []); // Убрали зависимость buildId - используем ref
 
@@ -204,21 +204,32 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
       // Загружаем данные сценария и импортируем flow_data
       isInitialized.current = true;
       hasImportedFlowData.current = true;
-      fetchScenario(scenarioId).then((parsedFlowData) => {
-        if (parsedFlowData && editorRef.current) {
-          console.log('Importing flowData (only on initial load)...');
-          editorRef.current.import(parsedFlowData);
+      fetchScenario(scenarioId).then((scenarioData) => {
+        if (scenarioData && editorRef.current) {
+          const { parsedFlowData, build_id } = scenarioData;
           
-          // Сохраняем все импортированные узлы в хранилище состояния
-          const moduleData = editorRef.current.drawflow[editorRef.current.module];
-          if (moduleData && moduleData.data) {
-            Object.keys(moduleData.data).forEach(nodeId => {
-              nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
-            });
-            console.log('Saved all imported nodes to state storage:', Object.keys(nodesStateRef.current));
+          // Устанавливаем build_id из сохраненного сценария
+          if (build_id) {
+            buildIdRef.current = build_id.toString();
+            // Загружаем данные сборки для справки
+            loadBuildDataForReference(build_id);
           }
           
-          console.log('✓ flowData imported successfully');
+          if (parsedFlowData) {
+            console.log('Importing flowData (only on initial load)...');
+            editorRef.current.import(parsedFlowData);
+            
+            // Сохраняем все импортированные узлы в хранилище состояния
+            const moduleData = editorRef.current.drawflow[editorRef.current.module];
+            if (moduleData && moduleData.data) {
+              Object.keys(moduleData.data).forEach(nodeId => {
+                nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
+              });
+              console.log('Saved all imported nodes to state storage:', Object.keys(nodesStateRef.current));
+            }
+            
+            console.log('✓ flowData imported successfully');
+          }
         }
       });
     }
@@ -236,7 +247,8 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     }
   };
 
-  const loadBuildAndCreateNodes = async (id, clearExisting = false) => {
+  // Load build data ONLY for reference (store in ref for buttons to use)
+  const loadBuildDataForReference = async (id) => {
     try {
       const token = localStorage.getItem('token');
       const response = await axios.get(`/api/builds/${id}`, {
@@ -246,141 +258,18 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
       
       if (!build) return;
 
-      const editor = editorRef.current;
-      
-      // Безопасная проверка: создаем модуль 'default' только если его реально нет в данных
-      if (!editor.module) {
-        try {
-          if (!editor.drawflow.drawflow['default']) {
-            editor.addModule('default', {});
-          }
-          editor.changeModule('default');
-        } catch (moduleError) {
-          console.error('Failed to switch module:', moduleError);
-          return;
-        }
-      }
-      
-      // ТЕПЕРЬ ПО УМОЛЧАНИЮ НЕ ОЧИЩАЕМ узлы - просто добавляем новые
-      // Это позволяет добавлять узлы без удаления уже созданных условий
-      if (clearExisting) {
-        console.log('Clearing existing nodes before loading build data...');
-        // Очищаем и хранилище состояния
-        nodesStateRef.current = {};
-        
-        // Получаем все ID узлов из текущего модуля и удаляем их через стандартный метод removeNode
-        const moduleData = editor.drawflow[editor.module];
-        if (moduleData && moduleData.data) {
-          const nodeIds = Object.keys(moduleData.data);
-          nodeIds.forEach(nodeId => {
-            try {
-              // Используем стандартный метод removeNode вместо removeNodeFromData
-              editor.removeNode(nodeId);
-            } catch (e) {
-              console.error('Error removing node:', e);
-            }
-          });
-        }
-      } else {
-        console.log('✓ Preserving existing nodes (conditions, etc.) while adding build nodes...');
-        console.log('Current nodes in state storage:', Object.keys(nodesStateRef.current));
-      }
-      
-      let yOffset = 50;
-      let xOffset = 50;
-
-      // Create Trigger nodes for post_fields (sensors)
-      if (build.post_fields && Array.isArray(build.post_fields)) {
-        build.post_fields.forEach((field, index) => {
-          // Логи для отладки структуры данных
-          console.log('📡 Post field data:', field);
-          
-          const humanName = field.human_name || field.name || 'Неизвестно';
-          const machineName = field.machine_name || field.field_name || `trigger_${index}`;
-          const fieldType = field.type || 'sensor';
-          const description = field.description || '';
-          
-          const html = `
-            <div class="drawflow_node_header bg-blue-500 text-white px-3 py-2 rounded-t-lg font-medium">
-              📡 ${humanName}
-            </div>
-            <div class="px-3 py-2 text-sm text-gray-600">
-              <div><strong>Type:</strong> ${fieldType}</div>
-              ${description ? `<div><strong>Desc:</strong> ${description}</div>` : ''}
-              <div class="text-xs text-gray-400 mt-1"><em>${machineName}</em></div>
-            </div>
-          `;
-          
-          editor.addNode(
-            'trigger',
-            1,
-            1,
-            xOffset,
-            yOffset + (index * 180),
-            machineName,
-            {},
-            html,
-            false
-          );
-        });
-        xOffset += 250;
-      }
-
-      // Create Action nodes for get_fields (commands)
-      if (build.get_fields && Array.isArray(build.get_fields)) {
-        build.get_fields.forEach((field, index) => {
-          // Логи для отладки структуры данных
-          console.log('⚙️ Get field data:', field);
-          
-          const humanName = field.human_name || field.name || 'Неизвестно';
-          const machineName = field.machine_name || field.field_name || `action_${index}`;
-          const fieldType = field.type || 'command';
-          const description = field.description || '';
-          
-          let botParamsHtml = '';
-          if (field.bot_parameters && Array.isArray(field.bot_parameters)) {
-            const params = field.bot_parameters.map((param, idx) => {
-              const paramHumanName = param.human_name || param.name || `param_${idx}`;
-              const paramMachineName = param.machine_name || `param_${idx}`;
-              return `
-                <label class="flex items-center space-x-2 text-xs">
-                  <input type="checkbox" class="form-checkbox" />
-                  <span>${paramHumanName}</span>
-                  <span class="text-xs text-gray-400">(${paramMachineName})</span>
-                </label>
-              `;
-            }).join('');
-            botParamsHtml = `<div class="mt-2 pt-2 border-t">${params}</div>`;
-          }
-
-          const html = `
-            <div class="drawflow_node_header bg-green-500 text-white px-3 py-2 rounded-t-lg font-medium">
-              ⚙️ ${humanName}
-            </div>
-            <div class="px-3 py-2 text-sm text-gray-600">
-              <div><strong>Type:</strong> ${fieldType}</div>
-              ${description ? `<div><strong>Desc:</strong> ${description}</div>` : ''}
-              ${botParamsHtml}
-              <div class="text-xs text-gray-400 mt-1"><em>${machineName}</em></div>
-            </div>
-          `;
-          
-          editor.addNode(
-            'action',
-            1,
-            0,
-            xOffset,
-            yOffset + (index * 180),
-            machineName,
-            {},
-            html,
-            false
-          );
-        });
-      }
+      // Store build data in a ref for buttons to access when creating nodes
+      window.currentBuildDataRef = build;
+      console.log('✓ Build data loaded for reference:', build.human_name);
+      console.log('Post fields:', build.post_fields?.length, 'Get fields:', build.get_fields?.length);
     } catch (error) {
-      console.error('Error loading build data:', error);
+      console.error('Error loading build data for reference:', error);
     }
+  };
+
+  // OLD FUNCTION - kept for compatibility but NOT used automatically anymore
+  const loadBuildAndCreateNodes = async (id, clearExisting = false) => {
+    console.log('⚠️ loadBuildAndCreateNodes is deprecated - use loadBuildDataForReference instead');
   };
 
   // Helper function to get all nodes from editor - ПРАВИЛЬНОЕ ПОЛУЧЕНИЕ УЗЛОВ ИЗ МОДУЛЯ
@@ -637,8 +526,9 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     }
     
     // Получаем список доступных полей из выбранной сборки
-    const selectedBuild = builds.find(b => b.id == buildIdRef.current);
-    const postFields = selectedBuild?.post_fields || [];
+    // Используем window.currentBuildDataRef который загружается при выборе сборки
+    const buildData = window.currentBuildDataRef;
+    const postFields = buildData?.post_fields || [];
     
     console.log('📡 Data node - Available post fields:', postFields);
     
@@ -730,8 +620,9 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     }
     
     // Получаем список доступных полей из выбранной сборки
-    const selectedBuild = builds.find(b => b.id == buildIdRef.current);
-    const getFields = selectedBuild?.get_fields || [];
+    // Используем window.currentBuildDataRef который загружается при выборе сборки
+    const buildData = window.currentBuildDataRef;
+    const getFields = buildData?.get_fields || [];
     
     console.log('⚙️ Action node - Available get fields:', getFields);
     
@@ -953,11 +844,12 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
         }
       }
       setLoading(false);
-      return parsedFlowData; // Возвращаем данные для импорта
+      // Возвращаем объект с данными для импорта
+      return { parsedFlowData, build_id: scenario.build_id };
     } catch (error) {
       console.error('Error fetching scenario:', error);
       setLoading(false);
-      return null;
+      return { parsedFlowData: null, build_id: null };
     }
   };
 
@@ -1038,9 +930,9 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
               defaultValue: buildIdRef.current,
               onChange: (e) => { 
                 buildIdRef.current = e.target.value;
-                // Триггерим загрузку build данных
-                if (editorRef.current && e.target.value) {
-                  loadBuildAndCreateNodes(e.target.value, false);
+                // Загружаем данные сборки для справки (чтобы кнопки знали какие поля доступны)
+                if (e.target.value) {
+                  loadBuildDataForReference(e.target.value);
                 }
               },
               className: 'w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500',
@@ -1053,7 +945,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
           )
         )
       ),
-      // Drawflow Editor Section
+      // Drawflow Editor Section - disabled until build is selected
       React.createElement(
         'div',
         { className: 'mb-6' },
@@ -1076,7 +968,8 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
                   console.log('Data button clicked, editor:', editorRef.current);
                   addDataNode();
                 },
-                className: 'px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 focus:outline-none'
+                disabled: !buildIdRef.current,
+                className: `px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 focus:outline-none ${!buildIdRef.current ? 'opacity-50 cursor-not-allowed' : ''}`
               },
               '+ Данные'
             ),
@@ -1088,7 +981,8 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
                   console.log('Action button clicked, editor:', editorRef.current);
                   addActionNode();
                 },
-                className: 'px-3 py-1 bg-green-500 text-white text-sm rounded hover:bg-green-600 focus:outline-none'
+                disabled: !buildIdRef.current,
+                className: `px-3 py-1 bg-green-500 text-white text-sm rounded hover:bg-green-600 focus:outline-none ${!buildIdRef.current ? 'opacity-50 cursor-not-allowed' : ''}`
               },
               '+ Действия'
             ),
@@ -1100,7 +994,8 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
                   console.log('Condition button clicked, editor:', editorRef.current);
                   addConditionNode();
                 },
-                className: 'px-3 py-1 bg-purple-600 text-white text-sm rounded hover:bg-purple-700 focus:outline-none'
+                disabled: !buildIdRef.current,
+                className: `px-3 py-1 bg-purple-600 text-white text-sm rounded hover:bg-purple-700 focus:outline-none ${!buildIdRef.current ? 'opacity-50 cursor-not-allowed' : ''}`
               },
               '+ Условие'
             )
@@ -1109,8 +1004,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
         React.createElement(
           'div',
           {
-            className: 'drawflow-wrapper'
-            // Убрали key, чтобы контейнер не пересоздавался при каждом рендере
+            className: `drawflow-wrapper ${!buildIdRef.current ? 'pointer-events-none opacity-50' : ''}`
           },
           React.createElement(
             'div',
