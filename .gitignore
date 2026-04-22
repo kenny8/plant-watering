@@ -2,30 +2,19 @@
 # Build artifacts
 build/
 dist/
-*.js
-*.jsx
-*.ts
-*.tsx
-*.css
-*.scss
-*.sass
-*.less
+*.js.map
+*.css.map
 *.min.js
 *.min.css
-*.bundle.js
-*.bundle.css
 
 # Dependencies
 node_modules/
 
-# Logs and temporary files
+# Logs and temp files
 *.log
 *.tmp
-*.temp
-*.swp
-*.swo
 
-# Environment variables
+# Environment
 .env
 .env.local
 *.env.*
@@ -33,10 +22,11 @@ node_modules/
 # Editors
 .vscode/
 .idea/
-*.swp
-*.swo
 
-# OS generated files
-.DS_Store
-Thumbs.db
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
 ```
