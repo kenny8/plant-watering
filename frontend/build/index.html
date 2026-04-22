@@ -105,7 +105,7 @@
     }
     
     /* Node input/output points */
-    .drawflow .drawflow-node .input,
+    /*.drawflow .drawflow-node .input,
     .drawflow .drawflow-node .output {
       background: #6366f1;
       border: 2px solid white;
@@ -118,7 +118,25 @@
       background: #4f46e5;
       transform: scale(1.2);
     }
-    
+    */
+    .drawflow .drawflow-node .input, .drawflow .drawflow-node .output {
+      height: 15px;
+      width: 15px;
+      border: 2px solid var(--border-color);
+    }
+
+    .drawflow .drawflow-node .input:hover, .drawflow .drawflow-node .output:hover {
+      background: #4ea9ff;
+    }
+
+    .drawflow .drawflow-node .output {
+      right: 10px;
+    }
+
+    .drawflow .drawflow-node .input {
+      left: -10px;
+      background: white;
+    }
     /* Custom node type styles */
     .drawflow .drawflow-node.condition,
     .drawflow .drawflow-node.dayofweek,
