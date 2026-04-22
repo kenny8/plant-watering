@@ -171,47 +171,73 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     }
   }, []); // Убрали зависимость buildId - используем ref
 
-  // Import flow data ONLY ONCE during initial editor setup - ИМПОРТИРУЕМ ТОЛЬКО ОДИН РАЗ
+  // Import flow data when scenarioId changes - ИМПОРТИРУЕМ ПРИ КАЖДОМ ИЗМЕНЕНИИ scenarioId
   useEffect(() => {
-    if (scenarioId && editorRef.current && !hasImportedFlowData.current && !isInitialized.current) {
-      // Загружаем данные сценария и импортируем flow_data
-      isInitialized.current = true;
-      hasImportedFlowData.current = true;
-      fetchScenario(scenarioId).then((scenarioData) => {
-        if (scenarioData && editorRef.current) {
-          const { parsedFlowData, build_id } = scenarioData;
+    // Сбрасываем флаги при изменении scenarioId
+    hasImportedFlowData.current = false;
+    isInitialized.current = false;
+    
+    if (!scenarioId || !editorRef.current) {
+      return;
+    }
+    
+    // Очищаем редактор перед импортом нового сценария
+    console.log('🧹 Clearing editor before importing new scenario...');
+    const editor = editorRef.current;
+    
+    // Переключаемся на модуль по умолчанию и очищаем его
+    editor.changeModule('default');
+    editor.clearModuleSelected();
+    
+    // Очищаем хранилище узлов
+    nodesStateRef.current = {};
+    
+    // Загружаем данные сценария и импортируем flow_data
+    isInitialized.current = true;
+    hasImportedFlowData.current = true;
+    
+    console.log('🔄 Loading scenario:', scenarioId);
+    fetchScenario(scenarioId).then((scenarioData) => {
+      if (scenarioData && editorRef.current) {
+        const { parsedFlowData, build_id } = scenarioData;
+        
+        // Устанавливаем build_id из сохраненного сценария
+        if (build_id) {
+          buildIdRef.current = build_id.toString();
+          // Загружаем данные сборки для справки
+          loadBuildDataForReference(build_id);
+        }
+        
+        if (parsedFlowData) {
+          console.log('📥 Importing flowData for scenario:', scenarioId, parsedFlowData);
           
-          // Устанавливаем build_id из сохраненного сценария
-          if (build_id) {
-            buildIdRef.current = build_id.toString();
-            // Загружаем данные сборки для справки
-            loadBuildDataForReference(build_id);
-          }
+          // Проверяем, есть ли данные для импорта
+          const hasDataToImport = parsedFlowData.drawflow && 
+            (parsedFlowData.drawflow.Home?.data || parsedFlowData.drawflow.default?.data);
           
-          if (parsedFlowData) {
-            console.log('📥 Importing flowData (only on initial load)...', parsedFlowData);
+          if (hasDataToImport) {
+            // Сначала переключаемся на модуль, где есть данные
+            const moduleWithData = parsedFlowData.drawflow.default?.data ? 'default' : 'Home';
+            editorRef.current.changeModule(moduleWithData);
             
-            // Проверяем, есть ли данные для импорта
-            const hasDataToImport = parsedFlowData.drawflow && 
-              (parsedFlowData.drawflow.Home?.data || parsedFlowData.drawflow.default?.data);
+            // Импортируем данные - обработчик editor.on('import') автоматически сохранит узлы
+            editorRef.current.import(parsedFlowData);
             
-            if (hasDataToImport) {
-              // Сначала переключаемся на модуль, где есть данные
-              const moduleWithData = parsedFlowData.drawflow.default?.data ? 'default' : 'Home';
-              editorRef.current.changeModule(moduleWithData);
-              
-              // Импортируем данные - обработчик editor.on('import') автоматически сохранит узлы
-              editorRef.current.import(parsedFlowData);
-              
-              console.log('✓ flowData import initiated - nodes will be saved via import event handler');
-            } else {
-              console.log('ℹ️ No flow data to import (empty scenario)');
-            }
+            console.log('✓ flowData import initiated - nodes will be saved via import event handler');
+          } else {
+            console.log('ℹ️ No flow data to import (empty scenario)');
           }
         }
-      });
-    }
-  }, []); // Убрали зависимость scenarioId - работает только один раз
+      }
+    });
+    
+    // Функция очистки при изменении scenarioId или размонтировании
+    return () => {
+      console.log('🔄 Cleanup for scenario:', scenarioId);
+      hasImportedFlowData.current = false;
+      isInitialized.current = false;
+    };
+  }, [scenarioId]); // Зависимость от scenarioId - перезапускается при изменении
 
   const fetchBuilds = async () => {
     try {
