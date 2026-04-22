@@ -4,24 +4,38 @@ build/
 dist/
 *.js.map
 *.css.map
+*.min.js
+*.min.css
+
 # Dependencies
 node_modules/
-# Cache directories
-.cache/
-.nyc_output/
-coverage/
-# Logs
-*.log
+
 # Environment
 .env
 .env.local
 .env.*
+
 # Editors
 .vscode/
 .idea/
 *.swp
 *.swo
-# OS generated files
+
+# Logs and temp files
+*.log
+*.tmp
+*.temp
+
+# OS specific
 .DS_Store
 Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
 ```

@@ -26,6 +26,11 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
   
   const editorRef = useRef(null);
   const drawflowContainerRef = useRef(null);
+  
+  // ГЛАВНОЕ ХРАНИЛИЩЕ СОСТОЯНИЯ УЗЛОВ
+  // Сохраняем полную копию всех узлов, чтобы восстанавливать их при ререндерах React
+  const nodesStateRef = useRef({}); 
+  
   const hasImportedFlowData = useRef(false);
   const isInitialized = useRef(false);
 
@@ -61,13 +66,32 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
           console.log('Calling editor.start()...');
           editor.start(); 
           
-          // Добавляем обработчики событий для отладки
+          // Добавляем обработчики событий для отладки и СОХРАНЕНИЯ состояния
           editor.on('nodeCreated', (nodeId) => {
             console.log('Node created:', nodeId);
+            // Сохраняем состояние узла в нашем хранилище
+            const moduleData = editor.drawflow[editor.module];
+            if (moduleData && moduleData.data[nodeId]) {
+              nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
+              console.log('Saved node state:', nodeId, nodesStateRef.current[nodeId]);
+            }
           });
+          
           editor.on('nodeRemoved', (nodeId) => {
             console.log('Node removed:', nodeId);
+            // Удаляем из хранилища
+            delete nodesStateRef.current[nodeId];
+            console.log('Node removed from state storage. Remaining nodes:', Object.keys(nodesStateRef.current));
           });
+          
+          editor.on('nodeMoved', (nodeId) => {
+            // Обновляем позицию в хранилище
+            const moduleData = editor.drawflow[editor.module];
+            if (moduleData && moduleData.data[nodeId]) {
+              nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
+            }
+          });
+          
           editor.on('connectionCreated', (connection) => {
             console.log('Connection created:', connection);
           });
@@ -139,6 +163,16 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
         if (parsedFlowData && editorRef.current) {
           console.log('Importing flowData (only on initial load)...');
           editorRef.current.import(parsedFlowData);
+          
+          // Сохраняем все импортированные узлы в хранилище состояния
+          const moduleData = editorRef.current.drawflow[editorRef.current.module];
+          if (moduleData && moduleData.data) {
+            Object.keys(moduleData.data).forEach(nodeId => {
+              nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
+            });
+            console.log('Saved all imported nodes to state storage:', Object.keys(nodesStateRef.current));
+          }
+          
           console.log('✓ flowData imported successfully');
         }
       });
@@ -186,6 +220,9 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
       // Это позволяет добавлять узлы без удаления уже созданных условий
       if (clearExisting) {
         console.log('Clearing existing nodes before loading build data...');
+        // Очищаем и хранилище состояния
+        nodesStateRef.current = {};
+        
         // Получаем все ID узлов из текущего модуля и удаляем их через стандартный метод removeNode
         const moduleData = editor.drawflow[editor.module];
         if (moduleData && moduleData.data) {
@@ -201,6 +238,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
         }
       } else {
         console.log('✓ Preserving existing nodes (conditions, etc.) while adding build nodes...');
+        console.log('Current nodes in state storage:', Object.keys(nodesStateRef.current));
       }
       
       let yOffset = 50;
@@ -288,9 +326,56 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     if (!moduleData || !moduleData.data) return [];
     return Object.values(moduleData.data);
   };
+  
+  // Функция восстановления узлов из хранилища состояния (на случай потери)
+  const restoreNodesFromState = () => {
+    const editor = editorRef.current;
+    if (!editor || !nodesStateRef.current) return;
+    
+    const currentNodes = getAllNodes(editor);
+    const currentNodeIds = new Set(currentNodes.map(n => n.id.toString()));
+    const storedNodeIds = Object.keys(nodesStateRef.current);
+    
+    console.log('Checking for missing nodes...', {
+      current: currentNodeIds.size,
+      stored: storedNodeIds.length
+    });
+    
+    // Находим узлы, которые есть в хранилище, но отсутствуют в редакторе
+    const missingNodes = storedNodeIds.filter(id => !currentNodeIds.has(id));
+    
+    if (missingNodes.length > 0) {
+      console.log('Found missing nodes, restoring:', missingNodes);
+      missingNodes.forEach(nodeId => {
+        const nodeData = nodesStateRef.current[nodeId];
+        if (nodeData) {
+          try {
+            // Восстанавливаем узел через addNode
+            editor.addNode(
+              nodeData.name,
+              Object.keys(nodeData.inputs || {}).length,
+              Object.keys(nodeData.outputs || {}).length,
+              nodeData.pos_x,
+              nodeData.pos_y,
+              nodeData.class || '',
+              nodeData.data || {},
+              nodeData.html,
+              false
+            );
+            console.log('Restored node:', nodeId);
+          } catch (error) {
+            console.error('Failed to restore node:', nodeId, error);
+          }
+        }
+      });
+    }
+  };
 
   const addConditionNode = () => {
     console.log('=== addConditionNode called ===');
+    
+    // СНАЧАЛА восстанавливаем узлы из хранилища (если есть потерянные)
+    restoreNodesFromState();
     
     if (!editorRef.current) {
       console.error('ERROR: Editor not initialized yet!');
@@ -377,6 +462,9 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
   const addDayOfWeekNode = () => {
     console.log('=== addDayOfWeekNode called ===');
     
+    // СНАЧАЛА восстанавливаем узлы из хранилища (если есть потерянные)
+    restoreNodesFromState();
+    
     if (!editorRef.current) {
       console.error('ERROR: Editor not initialized yet!');
       return;
@@ -457,6 +545,9 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
   const addTimeNode = () => {
     console.log('=== addTimeNode called ===');
     
+    // СНАЧАЛА восстанавливаем узлы из хранилища (если есть потерянные)
+    restoreNodesFromState();
+    
     if (!editorRef.current) {
       console.error('ERROR: Editor not initialized yet!');
       return;
@@ -529,6 +620,9 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
   // Функция для добавления ноды данных (Trigger из post_fields)
   const addDataNode = () => {
     console.log('=== addDataNode called ===');
+    
+    // СНАЧАЛА восстанавливаем узлы из хранилища (если есть потерянные)
+    restoreNodesFromState();
     
     if (!editorRef.current) {
       console.error('ERROR: Editor not initialized yet!');
@@ -616,6 +710,9 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
   // Функция для добавления ноды действия (Action из get_fields)
   const addActionNode = () => {
     console.log('=== addActionNode called ===');
+    
+    // СНАЧАЛА восстанавливаем узлы из хранилища (если есть потерянные)
+    restoreNodesFromState();
     
     if (!editorRef.current) {
       console.error('ERROR: Editor not initialized yet! editorRef.current is null');
@@ -1046,7 +1143,11 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
 }
 
 // Оборачиваем компонент в React.memo для предотвращения ре-рендеров при изменении props
-const ScenarioEditor = React.memo(ScenarioEditorComponent);
+// Важно: используем кастомное сравнение props, чтобы избежать лишних ререндеров
+const ScenarioEditor = React.memo(ScenarioEditorComponent, (prevProps, nextProps) => {
+  // Сравниваем props и возвращаем true, если они эквивалентны (чтобы предотвратить ререндер)
+  return prevProps.scenarioId === nextProps.scenarioId && prevProps.onClose === nextProps.onClose;
+});
 
 window.ScenarioEditor = ScenarioEditor;
 console.log('ScenarioEditor.jsx: ScenarioEditor exported:', window.ScenarioEditor);
