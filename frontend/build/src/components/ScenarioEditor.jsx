@@ -23,6 +23,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
   const [builds, setBuilds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [hasSelectedBuild, setHasSelectedBuild] = useState(false); // Отслеживаем выбор сборки в реальном времени
   
   const editorRef = useRef(null);
   const drawflowContainerRef = useRef(null);
@@ -262,6 +263,9 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
       window.currentBuildDataRef = build;
       console.log('✓ Build data loaded for reference:', build.human_name);
       console.log('Post fields:', build.post_fields?.length, 'Get fields:', build.get_fields?.length);
+      
+      // Обновляем состояние для разблокировки UI после загрузки данных сборки
+      setHasSelectedBuild(true);
     } catch (error) {
       console.error('Error loading build data for reference:', error);
     }
@@ -772,8 +776,8 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
       const token = localStorage.getItem('token');
       const exportedData = editorRef.current.export();
       
-      // Проверка buildId перед отправкой
-      if (!buildIdRef.current) {
+      // Проверка hasSelectedBuild перед отправкой (проверяем по состоянию, а не по ref)
+      if (!hasSelectedBuild) {
         alert('Пожалуйста, выберите сборку');
         setSaving(false);
         return;
@@ -832,6 +836,13 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
       machineNameRef.current = scenario.machine_name || '';
       buildIdRef.current = scenario.build_id || '';
       isActiveRef.current = scenario.is_active !== undefined ? scenario.is_active : true;
+      
+      // Если есть build_id, сразу устанавливаем hasSelectedBuild для разблокировки UI
+      if (scenario.build_id) {
+        setHasSelectedBuild(true);
+      } else {
+        setHasSelectedBuild(false);
+      }
       
       // Парсим flow_data, если это строка JSON
       let parsedFlowData = scenario.flow_data;
@@ -927,12 +938,17 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
             'select',
             {
               id: 'build_id',
-              defaultValue: buildIdRef.current,
+              value: buildIdRef.current,
               onChange: (e) => { 
-                buildIdRef.current = e.target.value;
+                const selectedValue = e.target.value;
+                buildIdRef.current = selectedValue;
+                // Обновляем состояние для мгновенной разблокировки UI
+                setHasSelectedBuild(!!selectedValue);
                 // Загружаем данные сборки для справки (чтобы кнопки знали какие поля доступны)
-                if (e.target.value) {
-                  loadBuildDataForReference(e.target.value);
+                if (selectedValue) {
+                  loadBuildDataForReference(selectedValue);
+                } else {
+                  setHasSelectedBuild(false);
                 }
               },
               className: 'w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500',
@@ -968,8 +984,8 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
                   console.log('Data button clicked, editor:', editorRef.current);
                   addDataNode();
                 },
-                disabled: !buildIdRef.current,
-                className: `px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 focus:outline-none ${!buildIdRef.current ? 'opacity-50 cursor-not-allowed' : ''}`
+                disabled: !hasSelectedBuild,
+                className: `px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 focus:outline-none ${!hasSelectedBuild ? 'opacity-50 cursor-not-allowed' : ''}`
               },
               '+ Данные'
             ),
@@ -981,8 +997,8 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
                   console.log('Action button clicked, editor:', editorRef.current);
                   addActionNode();
                 },
-                disabled: !buildIdRef.current,
-                className: `px-3 py-1 bg-green-500 text-white text-sm rounded hover:bg-green-600 focus:outline-none ${!buildIdRef.current ? 'opacity-50 cursor-not-allowed' : ''}`
+                disabled: !hasSelectedBuild,
+                className: `px-3 py-1 bg-green-500 text-white text-sm rounded hover:bg-green-600 focus:outline-none ${!hasSelectedBuild ? 'opacity-50 cursor-not-allowed' : ''}`
               },
               '+ Действия'
             ),
@@ -994,8 +1010,8 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
                   console.log('Condition button clicked, editor:', editorRef.current);
                   addConditionNode();
                 },
-                disabled: !buildIdRef.current,
-                className: `px-3 py-1 bg-purple-600 text-white text-sm rounded hover:bg-purple-700 focus:outline-none ${!buildIdRef.current ? 'opacity-50 cursor-not-allowed' : ''}`
+                disabled: !hasSelectedBuild,
+                className: `px-3 py-1 bg-purple-600 text-white text-sm rounded hover:bg-purple-700 focus:outline-none ${!hasSelectedBuild ? 'opacity-50 cursor-not-allowed' : ''}`
               },
               '+ Условие'
             )
@@ -1004,7 +1020,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
         React.createElement(
           'div',
           {
-            className: `drawflow-wrapper ${!buildIdRef.current ? 'pointer-events-none opacity-50' : ''}`
+            className: `drawflow-wrapper ${!hasSelectedBuild ? 'pointer-events-none opacity-50' : ''}`
           },
           React.createElement(
             'div',

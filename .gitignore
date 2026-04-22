@@ -1,31 +1,24 @@
 ```
 # Build artifacts
 build/
-dist/
-*.js.map
-*.css.map
-*.min.js
-*.min.css
-
 # Dependencies
 node_modules/
-
-# Logs and temp files
-*.log
-*.tmp
-
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 # Environment
 .env
 .env.local
-*.env.*
-
+.env.*
 # Editors
 .vscode/
 .idea/
 *.swp
 *.swo
-
-# OS generated files
-.DS_Store
-Thumbs.db
+# Logs
+*.log
+# Temp files
+*.tmp
 ```
