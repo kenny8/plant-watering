@@ -573,7 +573,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     }
     
     // Получаем список доступных полей из выбранной сборки
-    const selectedBuild = builds.find(b => b.id == buildId);
+    const selectedBuild = builds.find(b => b.id == buildIdRef.current);
     const postFields = selectedBuild?.post_fields || [];
     
     const fieldOptions = postFields.map((field, index) => 
@@ -660,7 +660,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     }
     
     // Получаем список доступных полей из выбранной сборки
-    const selectedBuild = builds.find(b => b.id == buildId);
+    const selectedBuild = builds.find(b => b.id == buildIdRef.current);
     const getFields = selectedBuild?.get_fields || [];
     
     const fieldOptions = getFields.map((field, index) => 
@@ -713,7 +713,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
       const exportedData = editorRef.current.export();
       
       // Проверка buildId перед отправкой
-      if (!buildId) {
+      if (!buildIdRef.current) {
         alert('Пожалуйста, выберите сборку');
         setSaving(false);
         return;

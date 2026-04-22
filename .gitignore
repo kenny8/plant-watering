@@ -1,41 +1,27 @@
 ```
 # Build artifacts
 build/
-*.js
-*.jsx
-*.css
-*.map
-
+dist/
+*.js.map
+*.css.map
 # Dependencies
 node_modules/
-
+# Cache directories
+.cache/
+.nyc_output/
+coverage/
+# Logs
+*.log
+# Environment
+.env
+.env.local
+.env.*
 # Editors
 .vscode/
 .idea/
 *.swp
 *.swo
-
-# Logs and temp files
-*.log
-*.tmp
-
-# Environment
-.env
-.env.local
-*.env.*
-
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-
-# Coverage
-coverage/
-htmlcov/
-.coverage
-
-# OS
+# OS generated files
 .DS_Store
 Thumbs.db
 ```
