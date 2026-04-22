@@ -6,23 +6,35 @@ if (!window.React || !window.axios) {
 }
 
 const React = window.React;
-const { useState, useEffect, useRef } = React;
+const { useState, useEffect, useRef, useMemo, useCallback } = React;
 const axios = window.axios;
 
-function ScenarioEditor({ scenarioId, onClose }) {
+// Оборачиваем компонент в React.memo для предотвращения ре-рендеров
+function ScenarioEditorComponent({ scenarioId, onClose }) {
   console.log('ScenarioEditor.jsx: Rendering', { scenarioId });
-  const [humanName, setHumanName] = useState('');
-  const [machineName, setMachineName] = useState('');
-  const [buildId, setBuildId] = useState('');
+  
+  // Используем refs вместо state для ВСЕХ значений, которые не требуют ре-рендера
+  const humanNameRef = useRef('');
+  const machineNameRef = useRef('');
+  const buildIdRef = useRef('');
+  const isActiveRef = useRef(true);
+  
+  // State только для тех полей, которые действительно нужны для UI
   const [builds, setBuilds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [flowData, setFlowData] = useState(null);
-  const [isActive, setIsActive] = useState(true);
+  
   const editorRef = useRef(null);
   const drawflowContainerRef = useRef(null);
+  
+  // ГЛАВНОЕ ХРАНИЛИЩЕ СОСТОЯНИЯ УЗЛОВ
+  // Сохраняем полную копию всех узлов, чтобы восстанавливать их при ререндерах React
+  const nodesStateRef = useRef({}); 
+  
+  const hasImportedFlowData = useRef(false);
+  const isInitialized = useRef(false);
 
-  // Initialize Drawflow editor
+  // Initialize Drawflow editor - ТОЛЬКО ОДИН РАЗ при монтировании
   useEffect(() => {
     let timer;
     
@@ -31,19 +43,15 @@ function ScenarioEditor({ scenarioId, onClose }) {
       console.log('drawflowContainerRef.current:', drawflowContainerRef.current);
       console.log('typeof window.Drawflow:', typeof window.Drawflow);
       
-      if (drawflowContainerRef.current && typeof window.Drawflow !== 'undefined') {
+      if (drawflowContainerRef.current && typeof window.Drawflow !== 'undefined' && !editorRef.current) {
         try {
-          // 1. ПРИНУДИТЕЛЬНО очищаем HTML-контейнер перед созданием
-          console.log('Clearing container innerHTML...');
-          drawflowContainerRef.current.innerHTML = '';
-
-          // 2. Создаем новый экземпляр
+          // Создаем новый экземпляр ТОЛЬКО если его еще нет
           console.log('Creating new Drawflow instance...');
           const editor = new window.Drawflow(drawflowContainerRef.current);
           editorRef.current = editor;
           console.log('Drawflow instance created:', editor);
 
-          // 3. Базовые настройки
+          // Базовые настройки
           console.log('Setting basic config...');
           editor.reroute = true;
           editor.reroute_fix_curvature = true;
@@ -54,32 +62,53 @@ function ScenarioEditor({ scenarioId, onClose }) {
           // Включаем режим перетаскивания узлов
           editor.draggable_nodes = true;
 
-          // 4. КРИТИЧЕСКИ ВАЖНО: сначала start(), потом всё остальное
+          // КРИТИЧЕСКИ ВАЖНО: сначала start(), потом всё остальное
           console.log('Calling editor.start()...');
           editor.start(); 
           
-          // Добавляем обработчики событий для отладки
+          // Добавляем обработчики событий для отладки и СОХРАНЕНИЯ состояния
           editor.on('nodeCreated', (nodeId) => {
-            console.log('Node created:', nodeId);
+            console.log('✅ Node created:', nodeId);
+            // Сохраняем состояние узла в нашем хранилище
+            const moduleData = editor.drawflow[editor.module];
+            if (moduleData && moduleData.data[nodeId]) {
+              nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
+              console.log('💾 Saved node state:', nodeId, nodesStateRef.current[nodeId]);
+            }
+            console.log('📊 Total nodes in storage:', Object.keys(nodesStateRef.current).length);
           });
+          
           editor.on('nodeRemoved', (nodeId) => {
-            console.log('Node removed:', nodeId);
+            console.log('❌ Node removed:', nodeId);
+            // Удаляем из хранилища
+            delete nodesStateRef.current[nodeId];
+            console.log('🗑️ Node removed from state storage. Remaining nodes:', Object.keys(nodesStateRef.current));
           });
+          
+          editor.on('nodeMoved', (nodeId) => {
+            // Обновляем позицию в хранилище
+            const moduleData = editor.drawflow[editor.module];
+            if (moduleData && moduleData.data[nodeId]) {
+              nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
+            }
+          });
+          
           editor.on('connectionCreated', (connection) => {
-            console.log('Connection created:', connection);
+            console.log('🔗 Connection created:', connection);
           });
           editor.on('connectionRemoved', (connection) => {
-            console.log('Connection removed:', connection);
+            console.log('✂️  Connection removed:', connection);
           }); 
           
           console.log('✓ Drawflow editor started successfully!');
           console.log('Editor state after start:', {
-            hasNodes: Object.keys(editor.nodes || {}).length > 0,
+            hasNodes: editor.drawflow && editor.drawflow[editor.module] ? Object.keys(editor.drawflow[editor.module].data || {}).length > 0 : false,
             reroute: editor.reroute,
-            container: editor.container
+            container: editor.container,
+            module: editor.module
           });
 
-          // 5. Инициализируем модуль по умолчанию (КРИТИЧЕСКИ ВАЖНО для addNode!)
+          // Инициализируем модуль по умолчанию (КРИТИЧЕСКИ ВАЖНО для addNode!)
           console.log('Initializing default module...');
           try {
             editor.addModule('default', {});
@@ -90,30 +119,15 @@ function ScenarioEditor({ scenarioId, onClose }) {
             console.error('Error initializing module:', moduleError);
           }
           
-          // 6. Если есть flowData (из редактирования сценария), импортируем его
-          if (flowData) {
-            console.log('Importing existing flowData...');
-            try {
-              editor.import(flowData);
-              console.log('✓ flowData imported');
-            } catch (error) {
-              console.error('✗ Error importing flow data:', error);
-            }
-          }
-          // buildId загрузится через отдельный useEffect и создаст узлы
         } catch (error) {
           console.error('✗ CRITICAL ERROR during Drawflow init:', error);
           console.error('Error stack:', error.stack);
-          console.error('Error details:', {
-            message: error.message,
-            name: error.name,
-            stack: error.stack
-          });
         }
       } else {
-        console.log('Waiting for container or Drawflow library...');
+        console.log('Waiting for container or Drawflow library or editor already exists...');
         console.log('Container ready?', !!drawflowContainerRef.current);
         console.log('Drawflow loaded?', typeof window.Drawflow !== 'undefined');
+        console.log('Editor already exists?', !!editorRef.current);
         timer = setTimeout(initDrawflow, 100);
       }
     };
@@ -125,111 +139,46 @@ function ScenarioEditor({ scenarioId, onClose }) {
     return () => {
       console.log('Cleanup: clearing timer and stopping editor...');
       if (timer) clearTimeout(timer);
-      if (editorRef.current) {
-        console.log('Stopping editor...');
-        try {
-          if (typeof editorRef.current.stop === 'function') {
-            editorRef.current.stop();
-          }
-        } catch (e) {
-          console.error('Error stopping editor:', e);
-        }
-        editorRef.current = null;
-      }
-      // Очищаем контейнер при размонтировании
-      if (drawflowContainerRef.current) {
-        console.log('Clearing container innerHTML on cleanup...');
-        drawflowContainerRef.current.innerHTML = '';
-      }
-      console.log('Cleanup complete');
+      // НЕ очищаем editorRef.current и контейнер при размонтировании
+      // Это позволяет сохранить узлы между рендерами React
+      console.log('Cleanup complete (preserving editor state)');
     };
   }, []); // Пустой массив - только при монтировании
 
-  // Отдельный эффект для принудительной инициализации ПОСЛЕ рендера контейнера
+  // Load build data and create nodes - ТЕПЕРЬ ВСЕГДА ДОБАВЛЯЕМ БЕЗ ОЧИСТКИ
   useEffect(() => {
-    const checkContainerAndInit = () => {
-      console.log('=== checkContainerAndInit ===');
-      console.log('drawflowContainerRef.current:', drawflowContainerRef.current);
-      console.log('editorRef.current:', editorRef.current);
-      
-      if (drawflowContainerRef.current && !editorRef.current) {
-        console.log('Container is ready but editor not initialized yet, forcing init...');
-        
-        try {
-          // Очищаем контейнер
-          drawflowContainerRef.current.innerHTML = '';
-          
-          // Создаем редактор
-          const editor = new window.Drawflow(drawflowContainerRef.current);
-          editorRef.current = editor;
-          
-          editor.reroute = true;
-          editor.reroute_fix_curvature = true;
-          editor.force_first_input = false;
-          editor.draggable_nodes = true;
-          editor.start();
-          
-          // Добавляем обработчики событий для отладки
-          editor.on('nodeCreated', (nodeId) => {
-            console.log('Node created:', nodeId);
-          });
-          editor.on('nodeRemoved', (nodeId) => {
-            console.log('Node removed:', nodeId);
-          });
-          editor.on('connectionCreated', (connection) => {
-            console.log('Connection created:', connection);
-          });
-          editor.on('connectionRemoved', (connection) => {
-            console.log('Connection removed:', connection);
-          });
-          
-          editor.addModule('default', {});
-          editor.changeModule('default');
-          
-          console.log('✓ Editor initialized via container-ready effect');
-          console.log('Current module:', editor.module);
-          console.log('Module version:', editor.version);
-          
-          if (flowData) {
-            editor.import(flowData);
-          }
-        } catch (error) {
-          console.error('✗ Error in forced initialization:', error);
-        }
-      }
-    };
-    
-    // Ждем немного чтобы DOM точно отрендерился
-    const timer = setTimeout(checkContainerAndInit, 100);
-    
-    return () => clearTimeout(timer);
-  }, [flowData]);
-  
-  // Load build data and create nodes - ВАЖНО: не очищать узлы перед загрузкой
-  useEffect(() => {
-    if (buildId && editorRef.current) {
-      // Проверяем, есть ли уже узлы в редакторе
-      const hasExistingNodes = Object.keys(editorRef.current.nodes || {}).length > 0;
-      
-      if (hasExistingNodes) {
-        console.log('Editor already has nodes, skipping automatic build load to preserve user-added nodes');
-      } else {
-        console.log('No existing nodes, loading build data...');
-        loadBuildAndCreateNodes(buildId, true);
-      }
+    if (buildIdRef.current && editorRef.current) {
+      console.log('BuildId changed, loading build data WITHOUT clearing existing nodes...');
+      // Всегда передаем false - НЕ очищать существующие узлы
+      loadBuildAndCreateNodes(buildIdRef.current, false);
     }
-  }, [buildId]);
+  }, []); // Убрали зависимость buildId - используем ref
 
-  // Import flow data when editing existing scenario
+  // Import flow data ONLY ONCE during initial editor setup - ИМПОРТИРУЕМ ТОЛЬКО ОДИН РАЗ
   useEffect(() => {
-    if (flowData && editorRef.current) {
-      try {
-        editorRef.current.import(flowData);
-      } catch (error) {
-        console.error('Error importing flow data:', error);
-      }
+    if (scenarioId && editorRef.current && !hasImportedFlowData.current && !isInitialized.current) {
+      // Загружаем данные сценария и импортируем flow_data
+      isInitialized.current = true;
+      hasImportedFlowData.current = true;
+      fetchScenario(scenarioId).then((parsedFlowData) => {
+        if (parsedFlowData && editorRef.current) {
+          console.log('Importing flowData (only on initial load)...');
+          editorRef.current.import(parsedFlowData);
+          
+          // Сохраняем все импортированные узлы в хранилище состояния
+          const moduleData = editorRef.current.drawflow[editorRef.current.module];
+          if (moduleData && moduleData.data) {
+            Object.keys(moduleData.data).forEach(nodeId => {
+              nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
+            });
+            console.log('Saved all imported nodes to state storage:', Object.keys(nodesStateRef.current));
+          }
+          
+          console.log('✓ flowData imported successfully');
+        }
+      });
     }
-  }, [flowData]);
+  }, []); // Убрали зависимость scenarioId - работает только один раз
 
   const fetchBuilds = async () => {
     try {
@@ -243,7 +192,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
     }
   };
 
-  const loadBuildAndCreateNodes = async (id, clearExisting = true) => {
+  const loadBuildAndCreateNodes = async (id, clearExisting = false) => {
     try {
       const token = localStorage.getItem('token');
       const response = await axios.get(`/api/builds/${id}`, {
@@ -268,22 +217,29 @@ function ScenarioEditor({ scenarioId, onClose }) {
         }
       }
       
-      // ВАЖНО: Если clearExisting = false, НЕ очищаем узлы - просто добавляем новые
+      // ТЕПЕРЬ ПО УМОЛЧАНИЮ НЕ ОЧИЩАЕМ узлы - просто добавляем новые
       // Это позволяет добавлять узлы без удаления уже созданных условий
       if (clearExisting) {
         console.log('Clearing existing nodes before loading build data...');
-        // Получаем все ID узлов и удаляем их через стандартный метод removeNode
-        const nodeIds = Object.keys(editor.nodes || {});
-        nodeIds.forEach(nodeId => {
-          try {
-            // Используем стандартный метод removeNode вместо removeNodeFromData
-            editor.removeNode(nodeId);
-          } catch (e) {
-            console.error('Error removing node:', e);
-          }
-        });
+        // Очищаем и хранилище состояния
+        nodesStateRef.current = {};
+        
+        // Получаем все ID узлов из текущего модуля и удаляем их через стандартный метод removeNode
+        const moduleData = editor.drawflow[editor.module];
+        if (moduleData && moduleData.data) {
+          const nodeIds = Object.keys(moduleData.data);
+          nodeIds.forEach(nodeId => {
+            try {
+              // Используем стандартный метод removeNode вместо removeNodeFromData
+              editor.removeNode(nodeId);
+            } catch (e) {
+              console.error('Error removing node:', e);
+            }
+          });
+        }
       } else {
-        console.log('Preserving existing nodes (conditions, etc.) while adding build nodes...');
+        console.log('✓ Preserving existing nodes (conditions, etc.) while adding build nodes...');
+        console.log('Current nodes in state storage:', Object.keys(nodesStateRef.current));
       }
       
       let yOffset = 50;
@@ -363,29 +319,54 @@ function ScenarioEditor({ scenarioId, onClose }) {
     }
   };
 
-  // Helper function to get all nodes from editor
+  // Helper function to get all nodes from editor - ПРАВИЛЬНОЕ ПОЛУЧЕНИЕ УЗЛОВ ИЗ МОДУЛЯ
   const getAllNodes = (editor) => {
-    if (!editor || !editor.nodes) return [];
-    return Object.values(editor.nodes);
+    if (!editor || !editor.drawflow || !editor.module) return [];
+    // Получаем узлы из текущего модуля
+    const moduleData = editor.drawflow[editor.module];
+    if (!moduleData || !moduleData.data) return [];
+    return Object.values(moduleData.data);
+  };
+  
+  // Функция восстановления узлов из хранилища состояния (на случай потери)
+  const restoreNodesFromState = () => {
+    const editor = editorRef.current;
+    if (!editor || !nodesStateRef.current) return;
+    
+    const currentNodes = getAllNodes(editor);
+    const currentNodeIds = new Set(currentNodes.map(n => n.id.toString()));
+    const storedNodeIds = Object.keys(nodesStateRef.current);
+    
+    console.log('Checking for missing nodes...', {
+      current: currentNodeIds.size,
+      stored: storedNodeIds.length
+    });
+    
+    // ВАЖНО: НЕ восстанавливаем узлы через addNode - это создает новые ID!
+    // Вместо этого просто проверяем, что узлы на месте
+    const missingNodes = storedNodeIds.filter(id => !currentNodeIds.has(id));
+    
+    if (missingNodes.length > 0) {
+      console.warn('⚠️ WARNING: Nodes are missing from editor but CANNOT be restored automatically!', missingNodes);
+      console.warn('This should NOT happen. If it does, please refresh the page.');
+      // НЕ пытаемся восстановить - это только усугубит проблему
+    } else {
+      console.log('✓ All nodes are present in editor');
+    }
   };
 
   const addConditionNode = () => {
     console.log('=== addConditionNode called ===');
-    console.log('editorRef.current:', editorRef.current);
-    console.log('typeof window.Drawflow:', typeof window.Drawflow);
+    
+    // ПРОВЕРЯЕМ что узлы на месте перед добавлением нового
+    restoreNodesFromState();
     
     if (!editorRef.current) {
-      console.error('ERROR: Editor not initialized yet! editorRef.current is null');
-      console.error('Drawflow loaded?', typeof window.Drawflow !== 'undefined');
-      console.error('Container ref?', drawflowContainerRef.current);
+      console.error('ERROR: Editor not initialized yet!');
       return;
     }
     
     const editor = editorRef.current;
-    console.log('Adding Condition node, editor instance:', editor);
-    console.log('Editor methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(editor)));
-    console.log('Current module:', editor.module);
-    console.log('Module version:', editor.version);
     
     // Проверка модуля перед добавлением узла
     if (!editor.module || !editor.version) {
@@ -406,17 +387,17 @@ function ScenarioEditor({ scenarioId, onClose }) {
     const maxX = existingNodes && existingNodes.length > 0 
       ? Math.max(...existingNodes.map(n => n.pos_x)) 
       : 300;
-    // Находим свободное место по Y, проверяя занятые позиции
+    
+    // Находим свободное место по Y
+    let newY = 50;
+    const nodeHeight = 180;
     const occupiedYPositions = existingNodes
-      .filter(n => n.pos_x >= maxX - 100) // Узлы в той же колонке
+      .filter(n => n.pos_x >= maxX - 100)
       .map(n => n.pos_y)
       .sort((a, b) => a - b);
     
-    let newY = 50;
-    const nodeHeight = 150; // Примерная высота узла
     for (let i = 0; i < occupiedYPositions.length; i++) {
       if (occupiedYPositions[i] > newY + nodeHeight) {
-        // Нашли промежуток, можно разместить здесь
         break;
       }
       newY = occupiedYPositions[i] + nodeHeight + 20;
@@ -443,13 +424,12 @@ function ScenarioEditor({ scenarioId, onClose }) {
       </div>
     `;
     
-    // addNode принимает 9 аргументов: name, inputs, outputs, x, y, class, data, html, typenode
     try {
-      console.log('Calling editor.addNode with args:', ['condition', 1, 1, maxX + 50, newY, 'condition', { operator: '>', value: 0 }, html, false]);
+      // ДОБАВЛЯЕМ НОДУ БЕЗ ПЕРЕРИСОВКИ REACT
       editor.addNode(
         'condition',
         1,
-        1, // 1 выход (как у остальных)
+        1,
         maxX + 50,
         newY,
         'condition',
@@ -457,35 +437,24 @@ function ScenarioEditor({ scenarioId, onClose }) {
         html,
         false
       );
-      console.log('✓ Condition node added successfully');
+      console.log('✓ Condition node added successfully. Total nodes:', Object.keys(editor.drawflow[editor.module]?.data || {}).length);
     } catch (error) {
       console.error('✗ ERROR adding condition node:', error);
-      console.error('Error stack:', error.stack);
-      console.error('Error details:', {
-        message: error.message,
-        name: error.name,
-        stack: error.stack
-      });
     }
   };
 
   const addDayOfWeekNode = () => {
     console.log('=== addDayOfWeekNode called ===');
-    console.log('editorRef.current:', editorRef.current);
-    console.log('typeof window.Drawflow:', typeof window.Drawflow);
+    
+    // ПРОВЕРЯЕМ что узлы на месте перед добавлением нового
+    restoreNodesFromState();
     
     if (!editorRef.current) {
-      console.error('ERROR: Editor not initialized yet! editorRef.current is null');
-      console.error('Drawflow loaded?', typeof window.Drawflow !== 'undefined');
-      console.error('Container ref?', drawflowContainerRef.current);
+      console.error('ERROR: Editor not initialized yet!');
       return;
     }
     
     const editor = editorRef.current;
-    console.log('Adding Day of Week node, editor instance:', editor);
-    console.log('Editor methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(editor)));
-    console.log('Current module:', editor.module);
-    console.log('Module version:', editor.version);
     
     // Проверка модуля перед добавлением узла
     if (!editor.module || !editor.version) {
@@ -506,17 +475,17 @@ function ScenarioEditor({ scenarioId, onClose }) {
     const maxX = existingNodes && existingNodes.length > 0 
       ? Math.max(...existingNodes.map(n => n.pos_x)) 
       : 300;
-    // Находим свободное место по Y, проверяя занятые позиции
+    
+    // Находим свободное место по Y
+    let newY = 50;
+    const nodeHeight = 180;
     const occupiedYPositions = existingNodes
-      .filter(n => n.pos_x >= maxX - 100) // Узлы в той же колонке
+      .filter(n => n.pos_x >= maxX - 100)
       .map(n => n.pos_y)
       .sort((a, b) => a - b);
     
-    let newY = 50;
-    const nodeHeight = 150; // Примерная высота узла
     for (let i = 0; i < occupiedYPositions.length; i++) {
       if (occupiedYPositions[i] > newY + nodeHeight) {
-        // Нашли промежуток, можно разместить здесь
         break;
       }
       newY = occupiedYPositions[i] + nodeHeight + 20;
@@ -539,9 +508,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
       </div>
     `;
     
-    // addNode принимает 9 аргументов: name, inputs, outputs, x, y, class, data, html, typenode
     try {
-      console.log('Calling editor.addNode with args:', ['dayofweek', 1, 1, maxX + 50, newY, 'dayofweek', { days: [] }, html, false]);
       editor.addNode(
         'dayofweek',
         1,
@@ -553,35 +520,24 @@ function ScenarioEditor({ scenarioId, onClose }) {
         html,
         false
       );
-      console.log('✓ Day of Week node added successfully');
+      console.log('✓ Day of Week node added successfully. Total nodes:', Object.keys(editor.drawflow[editor.module]?.data || {}).length);
     } catch (error) {
       console.error('✗ ERROR adding day of week node:', error);
-      console.error('Error stack:', error.stack);
-      console.error('Error details:', {
-        message: error.message,
-        name: error.name,
-        stack: error.stack
-      });
     }
   };
 
   const addTimeNode = () => {
     console.log('=== addTimeNode called ===');
-    console.log('editorRef.current:', editorRef.current);
-    console.log('typeof window.Drawflow:', typeof window.Drawflow);
+    
+    // ПРОВЕРЯЕМ что узлы на месте перед добавлением нового
+    restoreNodesFromState();
     
     if (!editorRef.current) {
-      console.error('ERROR: Editor not initialized yet! editorRef.current is null');
-      console.error('Drawflow loaded?', typeof window.Drawflow !== 'undefined');
-      console.error('Container ref?', drawflowContainerRef.current);
+      console.error('ERROR: Editor not initialized yet!');
       return;
     }
     
     const editor = editorRef.current;
-    console.log('Adding Time node, editor instance:', editor);
-    console.log('Editor methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(editor)));
-    console.log('Current module:', editor.module);
-    console.log('Module version:', editor.version);
     
     // Проверка модуля перед добавлением узла
     if (!editor.module || !editor.version) {
@@ -602,17 +558,17 @@ function ScenarioEditor({ scenarioId, onClose }) {
     const maxX = existingNodes && existingNodes.length > 0 
       ? Math.max(...existingNodes.map(n => n.pos_x)) 
       : 300;
-    // Находим свободное место по Y, проверяя занятые позиции
+    
+    // Находим свободное место по Y
+    let newY = 50;
+    const nodeHeight = 180;
     const occupiedYPositions = existingNodes
-      .filter(n => n.pos_x >= maxX - 100) // Узлы в той же колонке
+      .filter(n => n.pos_x >= maxX - 100)
       .map(n => n.pos_y)
       .sort((a, b) => a - b);
     
-    let newY = 50;
-    const nodeHeight = 150; // Примерная высота узла
     for (let i = 0; i < occupiedYPositions.length; i++) {
       if (occupiedYPositions[i] > newY + nodeHeight) {
-        // Нашли промежуток, можно разместить здесь
         break;
       }
       newY = occupiedYPositions[i] + nodeHeight + 20;
@@ -627,9 +583,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
       </div>
     `;
     
-    // addNode принимает 9 аргументов: name, inputs, outputs, x, y, class, data, html, typenode
     try {
-      console.log('Calling editor.addNode with args:', ['time', 1, 1, maxX + 50, newY, 'time', { time: '' }, html, false]);
       editor.addNode(
         'time',
         1,
@@ -641,15 +595,9 @@ function ScenarioEditor({ scenarioId, onClose }) {
         html,
         false
       );
-      console.log('✓ Time node added successfully');
+      console.log('✓ Time node added successfully. Total nodes:', Object.keys(editor.drawflow[editor.module]?.data || {}).length);
     } catch (error) {
       console.error('✗ ERROR adding time node:', error);
-      console.error('Error stack:', error.stack);
-      console.error('Error details:', {
-        message: error.message,
-        name: error.name,
-        stack: error.stack
-      });
     }
   };
 
@@ -657,8 +605,11 @@ function ScenarioEditor({ scenarioId, onClose }) {
   const addDataNode = () => {
     console.log('=== addDataNode called ===');
     
+    // ПРОВЕРЯЕМ что узлы на месте перед добавлением нового
+    restoreNodesFromState();
+    
     if (!editorRef.current) {
-      console.error('ERROR: Editor not initialized yet! editorRef.current is null');
+      console.error('ERROR: Editor not initialized yet!');
       return;
     }
     
@@ -683,24 +634,24 @@ function ScenarioEditor({ scenarioId, onClose }) {
     const maxX = existingNodes && existingNodes.length > 0 
       ? Math.max(...existingNodes.map(n => n.pos_x)) 
       : 300;
-    // Находим свободное место по Y, проверяя занятые позиции
+    
+    // Находим свободное место по Y
+    let newY = 50;
+    const nodeHeight = 180;
     const occupiedYPositions = existingNodes
-      .filter(n => n.pos_x >= maxX - 100) // Узлы в той же колонке
+      .filter(n => n.pos_x >= maxX - 100)
       .map(n => n.pos_y)
       .sort((a, b) => a - b);
     
-    let newY = 50;
-    const nodeHeight = 150; // Примерная высота узла
     for (let i = 0; i < occupiedYPositions.length; i++) {
       if (occupiedYPositions[i] > newY + nodeHeight) {
-        // Нашли промежуток, можно разместить здесь
         break;
       }
       newY = occupiedYPositions[i] + nodeHeight + 20;
     }
     
     // Получаем список доступных полей из выбранной сборки
-    const selectedBuild = builds.find(b => b.id == buildId);
+    const selectedBuild = builds.find(b => b.id == buildIdRef.current);
     const postFields = selectedBuild?.post_fields || [];
     
     const fieldOptions = postFields.map((field, index) => 
@@ -734,7 +685,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
         html,
         false
       );
-      console.log('✓ Data node added successfully');
+      console.log('✓ Data node added successfully. Total nodes:', Object.keys(editor.drawflow[editor.module]?.data || {}).length);
     } catch (error) {
       console.error('✗ ERROR adding data node:', error);
     }
@@ -743,6 +694,9 @@ function ScenarioEditor({ scenarioId, onClose }) {
   // Функция для добавления ноды действия (Action из get_fields)
   const addActionNode = () => {
     console.log('=== addActionNode called ===');
+    
+    // ПРОВЕРЯЕМ что узлы на месте перед добавлением нового
+    restoreNodesFromState();
     
     if (!editorRef.current) {
       console.error('ERROR: Editor not initialized yet! editorRef.current is null');
@@ -787,7 +741,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
     }
     
     // Получаем список доступных полей из выбранной сборки
-    const selectedBuild = builds.find(b => b.id == buildId);
+    const selectedBuild = builds.find(b => b.id == buildIdRef.current);
     const getFields = selectedBuild?.get_fields || [];
     
     const fieldOptions = getFields.map((field, index) => 
@@ -840,19 +794,19 @@ function ScenarioEditor({ scenarioId, onClose }) {
       const exportedData = editorRef.current.export();
       
       // Проверка buildId перед отправкой
-      if (!buildId) {
+      if (!buildIdRef.current) {
         alert('Пожалуйста, выберите сборку');
         setSaving(false);
         return;
       }
       
       const payload = { 
-        human_name: humanName, 
-        machine_name: machineName, 
-        build_id: parseInt(buildId),
+        human_name: humanNameRef.current, 
+        machine_name: machineNameRef.current, 
+        build_id: parseInt(buildIdRef.current),
         // Сериализуем flow_data в JSON строку для бэкенда
         flow_data: JSON.stringify(exportedData),
-        is_active: isActive
+        is_active: isActiveRef.current
       };
       
       console.log('Saving scenario with payload:', payload);
@@ -894,9 +848,12 @@ function ScenarioEditor({ scenarioId, onClose }) {
         headers: { Authorization: `Bearer ${token}` }
       });
       const scenario = response.data.scenario || response.data;
-      setHumanName(scenario.human_name || '');
-      setMachineName(scenario.machine_name || '');
-      setBuildId(scenario.build_id || '');
+      // Используем refs вместо setHumanName, setMachineName и т.д.
+      humanNameRef.current = scenario.human_name || '';
+      machineNameRef.current = scenario.machine_name || '';
+      buildIdRef.current = scenario.build_id || '';
+      isActiveRef.current = scenario.is_active !== undefined ? scenario.is_active : true;
+      
       // Парсим flow_data, если это строка JSON
       let parsedFlowData = scenario.flow_data;
       if (typeof scenario.flow_data === 'string') {
@@ -907,12 +864,12 @@ function ScenarioEditor({ scenarioId, onClose }) {
           parsedFlowData = null;
         }
       }
-      setFlowData(parsedFlowData);
-      setIsActive(scenario.is_active !== undefined ? scenario.is_active : true);
       setLoading(false);
+      return parsedFlowData; // Возвращаем данные для импорта
     } catch (error) {
       console.error('Error fetching scenario:', error);
       setLoading(false);
+      return null;
     }
   };
 
@@ -951,8 +908,8 @@ function ScenarioEditor({ scenarioId, onClose }) {
             {
               type: 'text',
               id: 'human_name',
-              value: humanName,
-              onChange: (e) => setHumanName(e.target.value),
+              defaultValue: humanNameRef.current,
+              onChange: (e) => { humanNameRef.current = e.target.value; },
               className: 'w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500',
               required: true
             }
@@ -971,8 +928,8 @@ function ScenarioEditor({ scenarioId, onClose }) {
             {
               type: 'text',
               id: 'machine_name',
-              value: machineName,
-              onChange: (e) => setMachineName(e.target.value),
+              defaultValue: machineNameRef.current,
+              onChange: (e) => { machineNameRef.current = e.target.value; },
               className: 'w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500',
               required: true
             }
@@ -990,8 +947,14 @@ function ScenarioEditor({ scenarioId, onClose }) {
             'select',
             {
               id: 'build_id',
-              value: buildId,
-              onChange: (e) => setBuildId(e.target.value),
+              defaultValue: buildIdRef.current,
+              onChange: (e) => { 
+                buildIdRef.current = e.target.value;
+                // Триггерим загрузку build данных
+                if (editorRef.current && e.target.value) {
+                  loadBuildAndCreateNodes(e.target.value, false);
+                }
+              },
               className: 'w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500',
               required: true
             },
@@ -1083,6 +1046,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
           'div',
           {
             className: 'drawflow-wrapper'
+            // Убрали key, чтобы контейнер не пересоздавался при каждом рендере
           },
           React.createElement(
             'div',
@@ -1108,19 +1072,19 @@ function ScenarioEditor({ scenarioId, onClose }) {
             React.createElement('input', {
               type: 'checkbox',
               className: 'sr-only',
-              checked: isActive,
-              onChange: (e) => setIsActive(e.target.checked)
+              defaultChecked: isActiveRef.current,
+              onChange: (e) => { isActiveRef.current = e.target.checked; }
             }),
             React.createElement(
               'div',
               {
-                className: `block w-14 h-8 rounded-full transition-colors ${isActive ? 'bg-green-600' : 'bg-gray-300'}`
+                className: `block w-14 h-8 rounded-full transition-colors ${isActiveRef.current ? 'bg-green-600' : 'bg-gray-300'}`
               }
             ),
             React.createElement(
               'div',
               {
-                className: `absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${isActive ? 'translate-x-6' : ''}`
+                className: `absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${isActiveRef.current ? 'translate-x-6' : ''}`
               }
             )
           ),
@@ -1161,6 +1125,13 @@ function ScenarioEditor({ scenarioId, onClose }) {
     )
   );
 }
+
+// Оборачиваем компонент в React.memo для предотвращения ре-рендеров при изменении props
+// Важно: используем кастомное сравнение props, чтобы избежать лишних ререндеров
+const ScenarioEditor = React.memo(ScenarioEditorComponent, (prevProps, nextProps) => {
+  // Сравниваем props и возвращаем true, если они эквивалентны (чтобы предотвратить ререндер)
+  return prevProps.scenarioId === nextProps.scenarioId && prevProps.onClose === nextProps.onClose;
+});
 
 window.ScenarioEditor = ScenarioEditor;
 console.log('ScenarioEditor.jsx: ScenarioEditor exported:', window.ScenarioEditor);

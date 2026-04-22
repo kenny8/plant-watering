@@ -1,26 +1,16 @@
 ```
 # Build artifacts
 build/
-dist/
-*.js.map
-*.css.map
+*.js
+
 # Dependencies
 node_modules/
-# Cache directories
-.cache/
-.npm/
-.yarn/
+
+# Editors
+.vscode/
+
 # Environment
 .env
 .env.local
-.env.*
-# Editors
-.vscode/
-.idea/
-*.swp
-*.swo
-# Logs
-*.log
-# Temporary files
-*.tmp
+*.env.*
 ```
