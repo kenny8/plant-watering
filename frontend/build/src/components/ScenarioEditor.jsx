@@ -341,10 +341,12 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
           if (field.bot_parameters && Array.isArray(field.bot_parameters)) {
             const params = field.bot_parameters.map((param, idx) => {
               const paramHumanName = param.human_name || param.name || `param_${idx}`;
+              const paramMachineName = param.machine_name || `param_${idx}`;
               return `
                 <label class="flex items-center space-x-2 text-xs">
                   <input type="checkbox" class="form-checkbox" />
                   <span>${paramHumanName}</span>
+                  <span class="text-xs text-gray-400">(${paramMachineName})</span>
                 </label>
               `;
             }).join('');
@@ -807,10 +809,20 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     
     console.log('⚙️ Action node - Available get fields:', getFields);
     
+    // Создаем мапу bot_parameters по machine_name для быстрого доступа
+    const botParamsMap = {};
+    getFields.forEach(field => {
+      const machineName = field.machine_name || field.field_name;
+      if (field.bot_parameters && Array.isArray(field.bot_parameters)) {
+        botParamsMap[machineName] = field.bot_parameters;
+        console.log(`📦 Bot parameters for ${machineName}:`, field.bot_parameters);
+      }
+    });
+    
     const fieldOptions = getFields.map((field, index) => {
       const humanName = field.human_name || field.name || field.field_name || `Команда ${index + 1}`;
       const machineName = field.machine_name || field.field_name || `cmd_${index}`;
-      return `<option value="${machineName}">${humanName}</option>`;
+      return `<option value="${machineName}" data-has-params="${!!field.bot_parameters}">${humanName}</option>`;
     }).join('');
     
     const html = `
@@ -825,7 +837,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
             ${fieldOptions}
           </select>
         </div>
-        <div class="bot-params-container mt-2 pt-2 border-t">
+        <div class="bot-params-container mt-2 pt-2 border-t" style="display:none;">
           <label class="block text-xs text-gray-600 mb-1">Параметры:</label>
           <div class="bot-params-list space-y-1"></div>
         </div>
@@ -833,7 +845,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     `;
     
     try {
-      editor.addNode(
+      const nodeId = editor.addNode(
         'action',
         1,
         1,
@@ -844,7 +856,92 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
         html,
         false
       );
-      console.log('✓ Action node added successfully');
+      console.log('✓ Action node added successfully with ID:', nodeId);
+      
+      // Добавляем обработчик изменения select для динамического отображения параметров
+      setTimeout(() => {
+        const nodeElement = document.querySelector(`[id^="node-${nodeId}"]`);
+        if (nodeElement) {
+          const actionSelect = nodeElement.querySelector('.action-field-select');
+          const paramsContainer = nodeElement.querySelector('.bot-params-container');
+          const paramsList = nodeElement.querySelector('.bot-params-list');
+          
+          if (actionSelect && paramsContainer && paramsList) {
+            console.log('⚙️ Setting up action select handler for node:', nodeId);
+            
+            const updateParams = () => {
+              const selectedValue = actionSelect.value;
+              console.log('⚙️ Action selected:', selectedValue);
+              
+              // Сохраняем выбранное значение в данные узла
+              const moduleData = editor.drawflow[editor.module];
+              if (moduleData && moduleData.data[nodeId]) {
+                moduleData.data[nodeId].data.selected_field = selectedValue;
+                nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
+              }
+              
+              // Очищаем предыдущие параметры
+              paramsList.innerHTML = '';
+              
+              // Показываем/скрываем контейнер параметров
+              if (selectedValue && botParamsMap[selectedValue]) {
+                const params = botParamsMap[selectedValue];
+                console.log('⚙️ Showing parameters for', selectedValue, ':', params);
+                
+                params.forEach((param, idx) => {
+                  const paramHumanName = param.human_name || param.name || `Параметр ${idx + 1}`;
+                  const paramMachineName = param.machine_name || `param_${idx}`;
+                  const paramResult = param.result || '';
+                  
+                  const paramHtml = `
+                    <label class="flex items-center space-x-2 text-xs">
+                      <input type="checkbox" class="form-checkbox bot-param-check" 
+                             data-param-name="${paramMachineName}" 
+                             data-param-result="${paramResult}" />
+                      <span>${paramHumanName}</span>
+                      <span class="text-xs text-gray-400">(${paramMachineName})</span>
+                    </label>
+                  `;
+                  paramsList.insertAdjacentHTML('beforeend', paramHtml);
+                });
+                
+                paramsContainer.style.display = 'block';
+                
+                // Добавляем обработчики изменений для чекбоксов параметров
+                const checkboxes = paramsList.querySelectorAll('.bot-param-check');
+                checkboxes.forEach(cb => {
+                  cb.addEventListener('change', (e) => {
+                    const paramName = e.target.getAttribute('data-param-name');
+                    const paramResult = e.target.getAttribute('data-param-result');
+                    const isChecked = e.target.checked;
+                    console.log('⚙️ Parameter changed:', { paramName, paramResult, isChecked, nodeId });
+                    
+                    // Обновляем bot_parameters в данных узла
+                    if (moduleData && moduleData.data[nodeId]) {
+                      const currentParams = moduleData.data[nodeId].data.bot_parameters || {};
+                      if (isChecked) {
+                        currentParams[paramName] = paramResult;
+                      } else {
+                        delete currentParams[paramName];
+                      }
+                      moduleData.data[nodeId].data.bot_parameters = currentParams;
+                      nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
+                    }
+                  });
+                });
+              } else {
+                paramsContainer.style.display = 'none';
+                console.log('⚙️ No parameters for this action or no action selected');
+              }
+            };
+            
+            actionSelect.addEventListener('change', updateParams);
+            
+            // Вызываем один раз при инициализации (на случай если значение уже выбрано)
+            // updateParams();
+          }
+        }
+      }, 100);
     } catch (error) {
       console.error('✗ ERROR adding action node:', error);
     }
