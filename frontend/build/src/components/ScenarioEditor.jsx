@@ -368,7 +368,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
           editor.addNode(
             'action',
             1,
-            1,
+            0,
             xOffset,
             yOffset + (index * 180),
             machineName,
@@ -453,94 +453,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     
     // Находим свободное место по Y
     let newY = 50;
-    const nodeHeight = 180;
-    const occupiedYPositions = existingNodes
-      .filter(n => n.pos_x >= maxX - 100)
-      .map(n => n.pos_y)
-      .sort((a, b) => a - b);
-    
-    for (let i = 0; i < occupiedYPositions.length; i++) {
-      if (occupiedYPositions[i] > newY + nodeHeight) {
-        break;
-      }
-      newY = occupiedYPositions[i] + nodeHeight + 20;
-    }
-    
-    const html = `
-      <div class="drawflow_node_header bg-orange-500 text-white px-3 py-2 rounded-t-lg font-medium">
-        🔀 Условие
-      </div>
-      <div class="px-3 py-2 text-sm">
-        <div class="mb-2">
-          <select class="w-full px-2 py-1 border rounded text-xs condition-operator">
-            <option value=">">&gt; (больше)</option>
-            <option value="<">&lt; (меньше)</option>
-            <option value="==">== (равно)</option>
-            <option value="!=">!= (не равно)</option>
-            <option value=">=">&gt;= (больше или равно)</option>
-            <option value="<=">&lt;= (меньше или равно)</option>
-          </select>
-        </div>
-        <div>
-          <input type="number" class="w-full px-2 py-1 border rounded text-xs condition-value" placeholder="Значение" />
-        </div>
-      </div>
-    `;
-    
-    try {
-      // ДОБАВЛЯЕМ НОДУ БЕЗ ПЕРЕРИСОВКИ REACT
-      editor.addNode(
-        'condition',
-        1,
-        1,
-        maxX + 50,
-        newY,
-        'condition',
-        { operator: '>', value: 0 },
-        html,
-        false
-      );
-      console.log('✓ Condition node added successfully. Total nodes:', Object.keys(editor.drawflow[editor.module]?.data || {}).length);
-    } catch (error) {
-      console.error('✗ ERROR adding condition node:', error);
-    }
-  };
-
-  const addDayOfWeekNode = () => {
-    console.log('=== addDayOfWeekNode called ===');
-    
-    // ПРОВЕРЯЕМ что узлы на месте перед добавлением нового
-    restoreNodesFromState();
-    
-    if (!editorRef.current) {
-      console.error('ERROR: Editor not initialized yet!');
-      return;
-    }
-    
-    const editor = editorRef.current;
-    
-    // Безопасная проверка: создаем модуль 'default' только если его реально нет в данных
-    if (!editor.module) {
-      try {
-        if (!editor.drawflow.drawflow['default']) {
-          editor.addModule('default', {});
-        }
-        editor.changeModule('default');
-      } catch (moduleError) {
-        console.error('Failed to switch module:', moduleError);
-        return;
-      }
-    }
-    
-    // Вычисляем позицию для новой ноды - справа от существующих
-    const existingNodes = getAllNodes(editor);
-    const maxX = existingNodes && existingNodes.length > 0 
-      ? Math.max(...existingNodes.map(n => n.pos_x)) 
-      : 300;
-    
-    // Находим свободное место по Y
-    let newY = 50;
-    const nodeHeight = 180;
+    const nodeHeight = 220;
     const occupiedYPositions = existingNodes
       .filter(n => n.pos_x >= maxX - 100)
       .map(n => n.pos_y)
@@ -554,7 +467,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     }
     
     const days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
-    const checkboxes = days.map((day, index) => `
+    const dayCheckboxes = days.map((day, index) => `
       <label class="flex items-center space-x-1 text-xs">
         <input type="checkbox" class="form-checkbox day-checkbox" data-day="${index}" />
         <span>${day}</span>
@@ -562,105 +475,118 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     `).join('');
     
     const html = `
-      <div class="drawflow_node_header bg-orange-500 text-white px-3 py-2 rounded-t-lg font-medium">
-        📅 День недели
+      <div class="drawflow_node_header bg-purple-600 text-white px-3 py-2 rounded-t-lg font-medium">
+        🔀 Условие
       </div>
-      <div class="px-3 py-2 text-sm grid grid-cols-2 gap-1">
-        ${checkboxes}
+      <div class="px-3 py-2 text-sm">
+        <div class="mb-3">
+          <label class="block text-xs text-gray-600 mb-1">Тип условия:</label>
+          <select class="w-full px-2 py-1 border rounded text-xs condition-type-select bg-white">
+            <option value="comparison">Сравнение значений</option>
+            <option value="time">Время</option>
+            <option value="dayofweek">День недели</option>
+          </select>
+        </div>
+        
+        <!-- Секция сравнения -->
+        <div class="condition-comparison-section">
+          <div class="mb-2">
+            <label class="block text-xs text-gray-600 mb-1">Оператор:</label>
+            <select class="w-full px-2 py-1 border rounded text-xs condition-operator">
+              <option value=">">&gt; (больше)</option>
+              <option value="<">&lt; (меньше)</option>
+              <option value="==">== (равно)</option>
+              <option value="!=">!= (не равно)</option>
+              <option value=">=">&gt;= (больше или равно)</option>
+              <option value="<=">&lt;= (меньше или равно)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs text-gray-600 mb-1">Значение:</label>
+            <input type="number" class="w-full px-2 py-1 border rounded text-xs condition-value" placeholder="Введите значение" />
+          </div>
+        </div>
+        
+        <!-- Секция времени -->
+        <div class="condition-time-section" style="display:none;">
+          <div>
+            <label class="block text-xs text-gray-600 mb-1">Время:</label>
+            <input type="time" class="w-full px-2 py-1 border rounded text-xs time-input" />
+          </div>
+        </div>
+        
+        <!-- Секция дней недели -->
+        <div class="condition-dayofweek-section" style="display:none;">
+          <label class="block text-xs text-gray-600 mb-2">Дни недели:</label>
+          <div class="grid grid-cols-2 gap-1">
+            ${dayCheckboxes}
+          </div>
+        </div>
       </div>
     `;
     
     try {
+      // ДОБАВЛЯЕМ НОДУ БЕЗ ПЕРЕРИСОВКИ REACT
       editor.addNode(
-        'dayofweek',
+        'condition',
         1,
         1,
         maxX + 50,
         newY,
-        'dayofweek',
-        { days: [] },
+        'condition',
+        { type: 'comparison', operator: '>', value: 0, time: '', days: [] },
         html,
         false
       );
-      console.log('✓ Day of Week node added successfully. Total nodes:', Object.keys(editor.drawflow[editor.module]?.data || {}).length);
+      
+      console.log('✓ Condition node added successfully. Total nodes:', Object.keys(editor.drawflow[editor.module]?.data || {}).length);
+      
+      // Добавляем обработчик переключения типа условия
+      setTimeout(() => {
+        const allNodes = document.querySelectorAll('[id^="node-"]');
+        let targetNodeElement = null;
+        allNodes.forEach(node => {
+          if (node.querySelector('.condition-type-select')) {
+            targetNodeElement = node;
+          }
+        });
+        
+        if (targetNodeElement) {
+          const typeSelect = targetNodeElement.querySelector('.condition-type-select');
+          const comparisonSection = targetNodeElement.querySelector('.condition-comparison-section');
+          const timeSection = targetNodeElement.querySelector('.condition-time-section');
+          const dayOfWeekSection = targetNodeElement.querySelector('.condition-dayofweek-section');
+          
+          if (typeSelect && comparisonSection && timeSection && dayOfWeekSection) {
+            typeSelect.addEventListener('change', (e) => {
+              const selectedType = e.target.value;
+              
+              // Скрываем все секции
+              comparisonSection.style.display = 'none';
+              timeSection.style.display = 'none';
+              dayOfWeekSection.style.display = 'none';
+              
+              // Показываем нужную секцию
+              if (selectedType === 'comparison') {
+                comparisonSection.style.display = 'block';
+              } else if (selectedType === 'time') {
+                timeSection.style.display = 'block';
+              } else if (selectedType === 'dayofweek') {
+                dayOfWeekSection.style.display = 'block';
+              }
+              
+              console.log('🔄 Condition type changed to:', selectedType);
+            });
+          }
+        }
+      }, 100);
+      
     } catch (error) {
-      console.error('✗ ERROR adding day of week node:', error);
+      console.error('✗ ERROR adding condition node:', error);
     }
   };
 
-  const addTimeNode = () => {
-    console.log('=== addTimeNode called ===');
-    
-    // ПРОВЕРЯЕМ что узлы на месте перед добавлением нового
-    restoreNodesFromState();
-    
-    if (!editorRef.current) {
-      console.error('ERROR: Editor not initialized yet!');
-      return;
-    }
-    
-    const editor = editorRef.current;
-    
-    // Безопасная проверка: создаем модуль 'default' только если его реально нет в данных
-    if (!editor.module) {
-      try {
-        if (!editor.drawflow.drawflow['default']) {
-          editor.addModule('default', {});
-        }
-        editor.changeModule('default');
-      } catch (moduleError) {
-        console.error('Failed to switch module:', moduleError);
-        return;
-      }
-    }
-    
-    // Вычисляем позицию для новой ноды - справа от существующих
-    const existingNodes = getAllNodes(editor);
-    const maxX = existingNodes && existingNodes.length > 0 
-      ? Math.max(...existingNodes.map(n => n.pos_x)) 
-      : 300;
-    
-    // Находим свободное место по Y
-    let newY = 50;
-    const nodeHeight = 180;
-    const occupiedYPositions = existingNodes
-      .filter(n => n.pos_x >= maxX - 100)
-      .map(n => n.pos_y)
-      .sort((a, b) => a - b);
-    
-    for (let i = 0; i < occupiedYPositions.length; i++) {
-      if (occupiedYPositions[i] > newY + nodeHeight) {
-        break;
-      }
-      newY = occupiedYPositions[i] + nodeHeight + 20;
-    }
-    
-    const html = `
-      <div class="drawflow_node_header bg-orange-500 text-white px-3 py-2 rounded-t-lg font-medium">
-        🕐 Время
-      </div>
-      <div class="px-3 py-2 text-sm">
-        <input type="time" class="w-full px-2 py-1 border rounded text-xs time-input" />
-      </div>
-    `;
-    
-    try {
-      editor.addNode(
-        'time',
-        1,
-        1,
-        maxX + 50,
-        newY,
-        'time',
-        { time: '' },
-        html,
-        false
-      );
-      console.log('✓ Time node added successfully. Total nodes:', Object.keys(editor.drawflow[editor.module]?.data || {}).length);
-    } catch (error) {
-      console.error('✗ ERROR adding time node:', error);
-    }
-  };
+  // Функции addDayOfWeekNode и addTimeNode удалены - теперь они встроены в addConditionNode
 
   // Функция для добавления ноды данных (Trigger из post_fields)
   const addDataNode = () => {
@@ -848,7 +774,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
       const nodeId = editor.addNode(
         'action',
         1,
-        1,
+        0,
         maxX + 50,
         newY,
         'action',
@@ -1174,33 +1100,9 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
                   console.log('Condition button clicked, editor:', editorRef.current);
                   addConditionNode();
                 },
-                className: 'px-3 py-1 bg-orange-500 text-white text-sm rounded hover:bg-orange-600 focus:outline-none'
+                className: 'px-3 py-1 bg-purple-600 text-white text-sm rounded hover:bg-purple-700 focus:outline-none'
               },
               '+ Условие'
-            ),
-            React.createElement(
-              'button',
-              {
-                type: 'button',
-                onClick: () => {
-                  console.log('Day of Week button clicked, editor:', editorRef.current);
-                  addDayOfWeekNode();
-                },
-                className: 'px-3 py-1 bg-orange-500 text-white text-sm rounded hover:bg-orange-600 focus:outline-none'
-              },
-              '+ День недели'
-            ),
-            React.createElement(
-              'button',
-              {
-                type: 'button',
-                onClick: () => {
-                  console.log('Time button clicked, editor:', editorRef.current);
-                  addTimeNode();
-                },
-                className: 'px-3 py-1 bg-orange-500 text-white text-sm rounded hover:bg-orange-600 focus:outline-none'
-              },
-              '+ Время'
             )
           )
         ),
