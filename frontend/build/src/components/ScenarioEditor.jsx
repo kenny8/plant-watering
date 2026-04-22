@@ -79,49 +79,21 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
             console.log('📊 Total nodes in storage:', Object.keys(nodesStateRef.current).length);
             
             // ДОБАВЛЯЕМ ОБРАБОТЧИКИ ДЛЯ SELECT ЭЛЕМЕНТОВ В НОДАХ
-            setTimeout(() => {
-              const nodeElement = document.querySelector(`[id^="node-${nodeId}"]`);
-              if (nodeElement) {
-                const dataSelect = nodeElement.querySelector('.data-field-select');
-                const actionSelect = nodeElement.querySelector('.action-field-select');
-                
-                if (dataSelect) {
-                  console.log('📡 Found data-field-select for node:', nodeId);
-                  dataSelect.addEventListener('change', (e) => {
-                    const selectedValue = e.target.value;
-                    const selectedOption = e.target.options[e.target.selectedIndex];
-                    console.log('📡 Data field changed:', { 
-                      machineName: selectedValue, 
-                      humanName: selectedOption.text,
-                      nodeId: nodeId 
-                    });
-                    // Сохраняем выбранное значение в данные узла
-                    if (moduleData && moduleData.data[nodeId]) {
-                      moduleData.data[nodeId].data.selected_field = selectedValue;
-                      nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
-                    }
-                  });
-                }
-                
-                if (actionSelect) {
-                  console.log('⚙️ Found action-field-select for node:', nodeId);
-                  actionSelect.addEventListener('change', (e) => {
-                    const selectedValue = e.target.value;
-                    const selectedOption = e.target.options[e.target.selectedIndex];
-                    console.log('⚙️ Action field changed:', { 
-                      machineName: selectedValue, 
-                      humanName: selectedOption.text,
-                      nodeId: nodeId 
-                    });
-                    // Сохраняем выбранное значение в данные узла
-                    if (moduleData && moduleData.data[nodeId]) {
-                      moduleData.data[nodeId].data.selected_field = selectedValue;
-                      nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
-                    }
-                  });
-                }
-              }
-            }, 100);
+            setupNodeSelectHandlers(nodeId);
+          });
+          
+          // Обработчик для импортированных узлов - срабатывает после import()
+          editor.on('import', (data) => {
+            console.log('📥 Import event triggered', data);
+            const moduleData = editor.drawflow[editor.module];
+            if (moduleData && moduleData.data) {
+              Object.keys(moduleData.data).forEach(nodeId => {
+                nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
+                console.log('💾 Saved imported node via event:', nodeId);
+                setupNodeSelectHandlers(nodeId);
+              });
+              console.log('✅ Total nodes in storage after import:', Object.keys(nodesStateRef.current).length);
+            }
           });
           
           editor.on('nodeRemoved', (nodeId) => {
@@ -217,19 +189,24 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
           }
           
           if (parsedFlowData) {
-            console.log('Importing flowData (only on initial load)...');
-            editorRef.current.import(parsedFlowData);
+            console.log('📥 Importing flowData (only on initial load)...', parsedFlowData);
             
-            // Сохраняем все импортированные узлы в хранилище состояния
-            const moduleData = editorRef.current.drawflow[editorRef.current.module];
-            if (moduleData && moduleData.data) {
-              Object.keys(moduleData.data).forEach(nodeId => {
-                nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
-              });
-              console.log('Saved all imported nodes to state storage:', Object.keys(nodesStateRef.current));
+            // Проверяем, есть ли данные для импорта
+            const hasDataToImport = parsedFlowData.drawflow && 
+              (parsedFlowData.drawflow.Home?.data || parsedFlowData.drawflow.default?.data);
+            
+            if (hasDataToImport) {
+              // Сначала переключаемся на модуль, где есть данные
+              const moduleWithData = parsedFlowData.drawflow.default?.data ? 'default' : 'Home';
+              editorRef.current.changeModule(moduleWithData);
+              
+              // Импортируем данные - обработчик editor.on('import') автоматически сохранит узлы
+              editorRef.current.import(parsedFlowData);
+              
+              console.log('✓ flowData import initiated - nodes will be saved via import event handler');
+            } else {
+              console.log('ℹ️ No flow data to import (empty scenario)');
             }
-            
-            console.log('✓ flowData imported successfully');
           }
         }
       });
@@ -299,17 +276,113 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
       stored: storedNodeIds.length
     });
     
-    // ВАЖНО: НЕ восстанавливаем узлы через addNode - это создает новые ID!
-    // Вместо этого просто проверяем, что узлы на месте
+    // Находим отсутствующие узлы
     const missingNodes = storedNodeIds.filter(id => !currentNodeIds.has(id));
     
     if (missingNodes.length > 0) {
-      console.warn('⚠️ WARNING: Nodes are missing from editor but CANNOT be restored automatically!', missingNodes);
-      console.warn('This should NOT happen. If it does, please refresh the page.');
-      // НЕ пытаемся восстановить - это только усугубит проблему
+      console.warn('⚠️ WARNING: Nodes are missing from editor, attempting to restore...', missingNodes);
+      
+      // Восстанавливаем каждый отсутствующий узел через import
+      try {
+        const module = editor.module;
+        if (!editor.drawflow[module]) {
+          editor.drawflow[module] = { data: {} };
+        }
+        
+        // Создаем структуру для импорта
+        const importData = {
+          drawflow: {
+            [module]: {
+              data: {}
+            }
+          }
+        };
+        
+        // Добавляем все отсутствующие узлы в структуру импорта
+        missingNodes.forEach(nodeId => {
+          const nodeData = nodesStateRef.current[nodeId];
+          if (nodeData) {
+            importData.drawflow[module].data[nodeId] = nodeData;
+            console.log('🔄 Preparing to restore node:', nodeId);
+          }
+        });
+        
+        // Импортируем узлы - Drawflow сам добавит их на канвас
+        editor.import(importData);
+        
+        console.log('✅ Restoration complete. Total nodes now:', Object.keys(nodesStateRef.current).length);
+        
+      } catch (error) {
+        console.error('❌ Failed to restore nodes:', error);
+      }
     } else {
       console.log('✓ All nodes are present in editor');
     }
+  };
+  
+  // Helper function to setup select handlers for a node
+  const setupNodeSelectHandlers = (nodeId) => {
+    setTimeout(() => {
+      const nodeElement = document.querySelector(`[id^="node-${nodeId}"]`);
+      if (!nodeElement) {
+        console.log('⚠️ Node element not found for node:', nodeId);
+        return;
+      }
+      
+      const editor = editorRef.current;
+      if (!editor) {
+        console.log('⚠️ Editor not ready for node:', nodeId);
+        return;
+      }
+      
+      const moduleData = editor.drawflow[editor.module];
+      const dataSelect = nodeElement.querySelector('.data-field-select');
+      const actionSelect = nodeElement.querySelector('.action-field-select');
+      
+      if (dataSelect) {
+        console.log('📡 Found data-field-select for node:', nodeId);
+        // Проверяем, есть ли уже обработчик (чтобы не дублировать)
+        if (!dataSelect.hasAttribute('data-handler-bound')) {
+          dataSelect.setAttribute('data-handler-bound', 'true');
+          dataSelect.addEventListener('change', (e) => {
+            const selectedValue = e.target.value;
+            const selectedOption = e.target.options[e.target.selectedIndex];
+            console.log('📡 Data field changed:', { 
+              machineName: selectedValue, 
+              humanName: selectedOption.text,
+              nodeId: nodeId 
+            });
+            // Сохраняем выбранное значение в данные узла
+            if (moduleData && moduleData.data[nodeId]) {
+              moduleData.data[nodeId].data.selected_field = selectedValue;
+              nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
+            }
+          });
+        }
+      }
+      
+      if (actionSelect) {
+        console.log('⚙️ Found action-field-select for node:', nodeId);
+        // Проверяем, есть ли уже обработчик (чтобы не дублировать)
+        if (!actionSelect.hasAttribute('data-handler-bound')) {
+          actionSelect.setAttribute('data-handler-bound', 'true');
+          actionSelect.addEventListener('change', (e) => {
+            const selectedValue = e.target.value;
+            const selectedOption = e.target.options[e.target.selectedIndex];
+            console.log('⚙️ Action field changed:', { 
+              machineName: selectedValue, 
+              humanName: selectedOption.text,
+              nodeId: nodeId 
+            });
+            // Сохраняем выбранное значение в данные узла
+            if (moduleData && moduleData.data[nodeId]) {
+              moduleData.data[nodeId].data.selected_field = selectedValue;
+              nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
+            }
+          });
+        }
+      }
+    }, 100);
   };
 
   const addConditionNode = () => {
