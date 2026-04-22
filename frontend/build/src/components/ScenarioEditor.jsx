@@ -114,7 +114,6 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
             editor.addModule('default', {});
             editor.changeModule('default');
             console.log('Current module:', editor.module);
-            console.log('Module version:', editor.version);
           } catch (moduleError) {
             console.error('Error initializing module:', moduleError);
           }
@@ -204,15 +203,15 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
 
       const editor = editorRef.current;
       
-      // Проверка и инициализация модуля перед добавлением узлов
-      if (!editor.module || !editor.version) {
-        console.log('Initializing module in loadBuildAndCreateNodes...');
+      // Безопасная проверка: создаем модуль 'default' только если его реально нет в данных
+      if (!editor.module) {
         try {
-          editor.addModule('default', {});
+          if (!editor.drawflow.drawflow['default']) {
+            editor.addModule('default', {});
+          }
           editor.changeModule('default');
-          console.log('Module initialized:', editor.module);
         } catch (moduleError) {
-          console.error('Failed to initialize module in loadBuildAndCreateNodes:', moduleError);
+          console.error('Failed to switch module:', moduleError);
           return;
         }
       }
@@ -368,16 +367,15 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     
     const editor = editorRef.current;
     
-    // Проверка модуля перед добавлением узла
-    if (!editor.module || !editor.version) {
-      console.error('ERROR: Module not initialized! Trying to initialize now...');
+    // Безопасная проверка: создаем модуль 'default' только если его реально нет в данных
+    if (!editor.module) {
       try {
-        editor.addModule('default', {});
+        if (!editor.drawflow.drawflow['default']) {
+          editor.addModule('default', {});
+        }
         editor.changeModule('default');
-        console.log('Module initialized on-the-fly:', editor.module);
       } catch (moduleError) {
-        console.error('Failed to initialize module:', moduleError);
-        alert('Ошибка инициализации Drawflow. Пожалуйста, обновите страницу.');
+        console.error('Failed to switch module:', moduleError);
         return;
       }
     }
@@ -456,16 +454,15 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     
     const editor = editorRef.current;
     
-    // Проверка модуля перед добавлением узла
-    if (!editor.module || !editor.version) {
-      console.error('ERROR: Module not initialized! Trying to initialize now...');
+    // Безопасная проверка: создаем модуль 'default' только если его реально нет в данных
+    if (!editor.module) {
       try {
-        editor.addModule('default', {});
+        if (!editor.drawflow.drawflow['default']) {
+          editor.addModule('default', {});
+        }
         editor.changeModule('default');
-        console.log('Module initialized on-the-fly:', editor.module);
       } catch (moduleError) {
-        console.error('Failed to initialize module:', moduleError);
-        alert('Ошибка инициализации Drawflow. Пожалуйста, обновите страницу.');
+        console.error('Failed to switch module:', moduleError);
         return;
       }
     }
@@ -539,16 +536,15 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     
     const editor = editorRef.current;
     
-    // Проверка модуля перед добавлением узла
-    if (!editor.module || !editor.version) {
-      console.error('ERROR: Module not initialized! Trying to initialize now...');
+    // Безопасная проверка: создаем модуль 'default' только если его реально нет в данных
+    if (!editor.module) {
       try {
-        editor.addModule('default', {});
+        if (!editor.drawflow.drawflow['default']) {
+          editor.addModule('default', {});
+        }
         editor.changeModule('default');
-        console.log('Module initialized on-the-fly:', editor.module);
       } catch (moduleError) {
-        console.error('Failed to initialize module:', moduleError);
-        alert('Ошибка инициализации Drawflow. Пожалуйста, обновите страницу.');
+        console.error('Failed to switch module:', moduleError);
         return;
       }
     }
@@ -615,16 +611,15 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     
     const editor = editorRef.current;
     
-    // Проверка модуля перед добавлением узла
-    if (!editor.module || !editor.version) {
-      console.error('ERROR: Module not initialized! Trying to initialize now...');
+    // Безопасная проверка: создаем модуль 'default' только если его реально нет в данных
+    if (!editor.module) {
       try {
-        editor.addModule('default', {});
+        if (!editor.drawflow.drawflow['default']) {
+          editor.addModule('default', {});
+        }
         editor.changeModule('default');
-        console.log('Module initialized on-the-fly:', editor.module);
       } catch (moduleError) {
-        console.error('Failed to initialize module:', moduleError);
-        alert('Ошибка инициализации Drawflow. Пожалуйста, обновите страницу.');
+        console.error('Failed to switch module:', moduleError);
         return;
       }
     }
@@ -705,16 +700,15 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     
     const editor = editorRef.current;
     
-    // Проверка модуля перед добавлением узла
-    if (!editor.module || !editor.version) {
-      console.error('ERROR: Module not initialized! Trying to initialize now...');
+    // Безопасная проверка: создаем модуль 'default' только если его реально нет в данных
+    if (!editor.module) {
       try {
-        editor.addModule('default', {});
+        if (!editor.drawflow.drawflow['default']) {
+          editor.addModule('default', {});
+        }
         editor.changeModule('default');
-        console.log('Module initialized on-the-fly:', editor.module);
       } catch (moduleError) {
-        console.error('Failed to initialize module:', moduleError);
-        alert('Ошибка инициализации Drawflow. Пожалуйста, обновите страницу.');
+        console.error('Failed to switch module:', moduleError);
         return;
       }
     }
