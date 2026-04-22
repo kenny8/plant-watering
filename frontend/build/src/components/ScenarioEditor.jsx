@@ -68,20 +68,21 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
           
           // Добавляем обработчики событий для отладки и СОХРАНЕНИЯ состояния
           editor.on('nodeCreated', (nodeId) => {
-            console.log('Node created:', nodeId);
+            console.log('✅ Node created:', nodeId);
             // Сохраняем состояние узла в нашем хранилище
             const moduleData = editor.drawflow[editor.module];
             if (moduleData && moduleData.data[nodeId]) {
               nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
-              console.log('Saved node state:', nodeId, nodesStateRef.current[nodeId]);
+              console.log('💾 Saved node state:', nodeId, nodesStateRef.current[nodeId]);
             }
+            console.log('📊 Total nodes in storage:', Object.keys(nodesStateRef.current).length);
           });
           
           editor.on('nodeRemoved', (nodeId) => {
-            console.log('Node removed:', nodeId);
+            console.log('❌ Node removed:', nodeId);
             // Удаляем из хранилища
             delete nodesStateRef.current[nodeId];
-            console.log('Node removed from state storage. Remaining nodes:', Object.keys(nodesStateRef.current));
+            console.log('🗑️ Node removed from state storage. Remaining nodes:', Object.keys(nodesStateRef.current));
           });
           
           editor.on('nodeMoved', (nodeId) => {
@@ -93,10 +94,10 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
           });
           
           editor.on('connectionCreated', (connection) => {
-            console.log('Connection created:', connection);
+            console.log('🔗 Connection created:', connection);
           });
           editor.on('connectionRemoved', (connection) => {
-            console.log('Connection removed:', connection);
+            console.log('✂️  Connection removed:', connection);
           }); 
           
           console.log('✓ Drawflow editor started successfully!');
@@ -341,40 +342,23 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
       stored: storedNodeIds.length
     });
     
-    // Находим узлы, которые есть в хранилище, но отсутствуют в редакторе
+    // ВАЖНО: НЕ восстанавливаем узлы через addNode - это создает новые ID!
+    // Вместо этого просто проверяем, что узлы на месте
     const missingNodes = storedNodeIds.filter(id => !currentNodeIds.has(id));
     
     if (missingNodes.length > 0) {
-      console.log('Found missing nodes, restoring:', missingNodes);
-      missingNodes.forEach(nodeId => {
-        const nodeData = nodesStateRef.current[nodeId];
-        if (nodeData) {
-          try {
-            // Восстанавливаем узел через addNode
-            editor.addNode(
-              nodeData.name,
-              Object.keys(nodeData.inputs || {}).length,
-              Object.keys(nodeData.outputs || {}).length,
-              nodeData.pos_x,
-              nodeData.pos_y,
-              nodeData.class || '',
-              nodeData.data || {},
-              nodeData.html,
-              false
-            );
-            console.log('Restored node:', nodeId);
-          } catch (error) {
-            console.error('Failed to restore node:', nodeId, error);
-          }
-        }
-      });
+      console.warn('⚠️ WARNING: Nodes are missing from editor but CANNOT be restored automatically!', missingNodes);
+      console.warn('This should NOT happen. If it does, please refresh the page.');
+      // НЕ пытаемся восстановить - это только усугубит проблему
+    } else {
+      console.log('✓ All nodes are present in editor');
     }
   };
 
   const addConditionNode = () => {
     console.log('=== addConditionNode called ===');
     
-    // СНАЧАЛА восстанавливаем узлы из хранилища (если есть потерянные)
+    // ПРОВЕРЯЕМ что узлы на месте перед добавлением нового
     restoreNodesFromState();
     
     if (!editorRef.current) {
@@ -462,7 +446,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
   const addDayOfWeekNode = () => {
     console.log('=== addDayOfWeekNode called ===');
     
-    // СНАЧАЛА восстанавливаем узлы из хранилища (если есть потерянные)
+    // ПРОВЕРЯЕМ что узлы на месте перед добавлением нового
     restoreNodesFromState();
     
     if (!editorRef.current) {
@@ -545,7 +529,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
   const addTimeNode = () => {
     console.log('=== addTimeNode called ===');
     
-    // СНАЧАЛА восстанавливаем узлы из хранилища (если есть потерянные)
+    // ПРОВЕРЯЕМ что узлы на месте перед добавлением нового
     restoreNodesFromState();
     
     if (!editorRef.current) {
@@ -621,7 +605,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
   const addDataNode = () => {
     console.log('=== addDataNode called ===');
     
-    // СНАЧАЛА восстанавливаем узлы из хранилища (если есть потерянные)
+    // ПРОВЕРЯЕМ что узлы на месте перед добавлением нового
     restoreNodesFromState();
     
     if (!editorRef.current) {
@@ -711,7 +695,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
   const addActionNode = () => {
     console.log('=== addActionNode called ===');
     
-    // СНАЧАЛА восстанавливаем узлы из хранилища (если есть потерянные)
+    // ПРОВЕРЯЕМ что узлы на месте перед добавлением нового
     restoreNodesFromState();
     
     if (!editorRef.current) {
