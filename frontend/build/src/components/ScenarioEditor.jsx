@@ -181,17 +181,6 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
       return;
     }
     
-    // Очищаем редактор перед импортом нового сценария
-    console.log('🧹 Clearing editor before importing new scenario...');
-    const editor = editorRef.current;
-    
-    // Переключаемся на модуль по умолчанию и очищаем его
-    editor.changeModule('default');
-    editor.clearModuleSelected();
-    
-    // Очищаем хранилище узлов
-    nodesStateRef.current = {};
-    
     // Загружаем данные сценария и импортируем flow_data
     isInitialized.current = true;
     hasImportedFlowData.current = true;
@@ -200,6 +189,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     fetchScenario(scenarioId).then((scenarioData) => {
       if (scenarioData && editorRef.current) {
         const { parsedFlowData, build_id } = scenarioData;
+        const editor = editorRef.current;
         
         // Устанавливаем build_id из сохраненного сценария
         if (build_id) {
@@ -216,12 +206,22 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
             (parsedFlowData.drawflow.Home?.data || parsedFlowData.drawflow.default?.data);
           
           if (hasDataToImport) {
+            // Очищаем редактор ПЕРЕД импортом
+            console.log('🧹 Clearing editor before import...');
+            
+            // Переключаемся на модуль по умолчанию и очищаем его
+            editor.changeModule('default');
+            editor.clearModuleSelected();
+            
+            // Очищаем хранилище узлов
+            nodesStateRef.current = {};
+            
             // Сначала переключаемся на модуль, где есть данные
             const moduleWithData = parsedFlowData.drawflow.default?.data ? 'default' : 'Home';
-            editorRef.current.changeModule(moduleWithData);
+            editor.changeModule(moduleWithData);
             
             // Импортируем данные - обработчик editor.on('import') автоматически сохранит узлы
-            editorRef.current.import(parsedFlowData);
+            editor.import(parsedFlowData);
             
             console.log('✓ flowData import initiated - nodes will be saved via import event handler');
           } else {
