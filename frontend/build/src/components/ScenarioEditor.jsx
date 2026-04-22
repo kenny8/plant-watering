@@ -213,32 +213,43 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
             editor.changeModule('default');
             editor.clearModuleSelected();
             
+            // Также очищаем Home модуль если там есть данные
+            if (editor.drawflow.Home?.data) {
+              editor.changeModule('Home');
+              editor.clearModuleSelected();
+            }
+            
             // Очищаем хранилище узлов
             nodesStateRef.current = {};
             
-            // Сначала переключаемся на модуль, где есть данные
-            const moduleWithData = parsedFlowData.drawflow.default?.data ? 'default' : 'Home';
-            editor.changeModule(moduleWithData);
-            
-            // Импортируем данные
+            // Импортируем данные (Drawflow сам определит куда их поместить)
             editor.import(parsedFlowData);
             
             // КРИТИЧЕСКИ ВАЖНО: явно сохраняем узлы после импорта
-            // Drawflow может не сразу вызвать событие import, поэтому делаем это вручную
+            // Проверяем ОБА модуля
             setTimeout(() => {
-              const importedModuleData = editor.drawflow[moduleWithData];
-              if (importedModuleData && importedModuleData.data) {
-                Object.keys(importedModuleData.data).forEach(nodeId => {
-                  nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(importedModuleData.data[nodeId]));
-                  console.log('💾 Saved imported node (manual):', nodeId);
-                  setupNodeSelectHandlers(nodeId);
-                });
-                console.log('✅ Total nodes in storage after manual save:', Object.keys(nodesStateRef.current).length);
-                
-                // Восстанавливаем связи если они потерялись
+              const modulesToCheck = ['default', 'Home'];
+              let totalNodes = 0;
+              
+              modulesToCheck.forEach(moduleName => {
+                const moduleData = editor.drawflow[moduleName];
+                if (moduleData && moduleData.data) {
+                  Object.keys(moduleData.data).forEach(nodeId => {
+                    nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
+                    console.log('💾 Saved imported node from module', moduleName, ':', nodeId);
+                    setupNodeSelectHandlers(nodeId);
+                    totalNodes++;
+                  });
+                }
+              });
+              
+              console.log('✅ Total nodes in storage after manual save:', totalNodes);
+              
+              // Восстанавливаем связи если они потерялись
+              if (totalNodes > 0) {
                 restoreNodesFromState();
               }
-            }, 100);
+            }, 50);
             
             console.log('✓ flowData import initiated - nodes will be saved via import event handler and manual save');
           } else {

@@ -1,40 +1,25 @@
 ```
 # Build artifacts
 build/
-dist/
-*.o
-*.obj
-*.out
+*.js
+*.jsx
+*.css
+*.html
+*.map
 
 # Dependencies
 node_modules/
-.venv/
-venv/
-__pycache__/
-.mypy_cache/
-.pytest_cache/
-
-# Editors
-.vscode/
-.idea/
-*.swp
-*.swo
 
 # Logs and temp files
 *.log
 *.tmp
 
+# Editors
+.vscode/
+.idea/
+
 # Environment
 .env
 .env.local
 *.env.*
-
-# Coverage
-coverage/
-htmlcov/
-.coverage
-
-# OS
-.DS_Store
-Thumbs.db
 ```
