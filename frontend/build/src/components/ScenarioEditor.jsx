@@ -6,21 +6,28 @@ if (!window.React || !window.axios) {
 }
 
 const React = window.React;
-const { useState, useEffect, useRef } = React;
+const { useState, useEffect, useRef, useMemo, useCallback } = React;
 const axios = window.axios;
 
-function ScenarioEditor({ scenarioId, onClose }) {
+// Оборачиваем компонент в React.memo для предотвращения ре-рендеров
+function ScenarioEditorComponent({ scenarioId, onClose }) {
   console.log('ScenarioEditor.jsx: Rendering', { scenarioId });
-  const [humanName, setHumanName] = useState('');
-  const [machineName, setMachineName] = useState('');
-  const [buildId, setBuildId] = useState('');
+  
+  // Используем refs вместо state для ВСЕХ значений, которые не требуют ре-рендера
+  const humanNameRef = useRef('');
+  const machineNameRef = useRef('');
+  const buildIdRef = useRef('');
+  const isActiveRef = useRef(true);
+  
+  // State только для тех полей, которые действительно нужны для UI
   const [builds, setBuilds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  // Убрали flowData state - теперь не используем его для синхронизации
-  const [isActive, setIsActive] = useState(true);
+  
   const editorRef = useRef(null);
   const drawflowContainerRef = useRef(null);
+  const hasImportedFlowData = useRef(false);
+  const isInitialized = useRef(false);
 
   // Initialize Drawflow editor - ТОЛЬКО ОДИН РАЗ при монтировании
   useEffect(() => {
@@ -115,30 +122,28 @@ function ScenarioEditor({ scenarioId, onClose }) {
 
   // Load build data and create nodes - ТЕПЕРЬ ВСЕГДА ДОБАВЛЯЕМ БЕЗ ОЧИСТКИ
   useEffect(() => {
-    if (buildId && editorRef.current) {
+    if (buildIdRef.current && editorRef.current) {
       console.log('BuildId changed, loading build data WITHOUT clearing existing nodes...');
       // Всегда передаем false - НЕ очищать существующие узлы
-      loadBuildAndCreateNodes(buildId, false);
+      loadBuildAndCreateNodes(buildIdRef.current, false);
     }
-  }, [buildId]);
+  }, []); // Убрали зависимость buildId - используем ref
 
   // Import flow data ONLY ONCE during initial editor setup - ИМПОРТИРУЕМ ТОЛЬКО ОДИН РАЗ
-  // FlowData должен импортироваться только один раз при первой загрузке сценария
-  const hasImportedFlowData = useRef(false);
-  
   useEffect(() => {
-    if (scenarioId && editorRef.current && !hasImportedFlowData.current) {
+    if (scenarioId && editorRef.current && !hasImportedFlowData.current && !isInitialized.current) {
       // Загружаем данные сценария и импортируем flow_data
+      isInitialized.current = true;
+      hasImportedFlowData.current = true;
       fetchScenario(scenarioId).then((parsedFlowData) => {
         if (parsedFlowData && editorRef.current) {
           console.log('Importing flowData (only on initial load)...');
-          hasImportedFlowData.current = true;
           editorRef.current.import(parsedFlowData);
           console.log('✓ flowData imported successfully');
         }
       });
     }
-  }, [scenarioId]);
+  }, []); // Убрали зависимость scenarioId - работает только один раз
 
   const fetchBuilds = async () => {
     try {
@@ -715,12 +720,12 @@ function ScenarioEditor({ scenarioId, onClose }) {
       }
       
       const payload = { 
-        human_name: humanName, 
-        machine_name: machineName, 
-        build_id: parseInt(buildId),
+        human_name: humanNameRef.current, 
+        machine_name: machineNameRef.current, 
+        build_id: parseInt(buildIdRef.current),
         // Сериализуем flow_data в JSON строку для бэкенда
         flow_data: JSON.stringify(exportedData),
-        is_active: isActive
+        is_active: isActiveRef.current
       };
       
       console.log('Saving scenario with payload:', payload);
@@ -762,9 +767,12 @@ function ScenarioEditor({ scenarioId, onClose }) {
         headers: { Authorization: `Bearer ${token}` }
       });
       const scenario = response.data.scenario || response.data;
-      setHumanName(scenario.human_name || '');
-      setMachineName(scenario.machine_name || '');
-      setBuildId(scenario.build_id || '');
+      // Используем refs вместо setHumanName, setMachineName и т.д.
+      humanNameRef.current = scenario.human_name || '';
+      machineNameRef.current = scenario.machine_name || '';
+      buildIdRef.current = scenario.build_id || '';
+      isActiveRef.current = scenario.is_active !== undefined ? scenario.is_active : true;
+      
       // Парсим flow_data, если это строка JSON
       let parsedFlowData = scenario.flow_data;
       if (typeof scenario.flow_data === 'string') {
@@ -775,8 +783,6 @@ function ScenarioEditor({ scenarioId, onClose }) {
           parsedFlowData = null;
         }
       }
-      // Убрали setFlowData - теперь не используем state для синхронизации
-      setIsActive(scenario.is_active !== undefined ? scenario.is_active : true);
       setLoading(false);
       return parsedFlowData; // Возвращаем данные для импорта
     } catch (error) {
@@ -821,8 +827,8 @@ function ScenarioEditor({ scenarioId, onClose }) {
             {
               type: 'text',
               id: 'human_name',
-              value: humanName,
-              onChange: (e) => setHumanName(e.target.value),
+              defaultValue: humanNameRef.current,
+              onChange: (e) => { humanNameRef.current = e.target.value; },
               className: 'w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500',
               required: true
             }
@@ -841,8 +847,8 @@ function ScenarioEditor({ scenarioId, onClose }) {
             {
               type: 'text',
               id: 'machine_name',
-              value: machineName,
-              onChange: (e) => setMachineName(e.target.value),
+              defaultValue: machineNameRef.current,
+              onChange: (e) => { machineNameRef.current = e.target.value; },
               className: 'w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500',
               required: true
             }
@@ -860,8 +866,14 @@ function ScenarioEditor({ scenarioId, onClose }) {
             'select',
             {
               id: 'build_id',
-              value: buildId,
-              onChange: (e) => setBuildId(e.target.value),
+              defaultValue: buildIdRef.current,
+              onChange: (e) => { 
+                buildIdRef.current = e.target.value;
+                // Триггерим загрузку build данных
+                if (editorRef.current && e.target.value) {
+                  loadBuildAndCreateNodes(e.target.value, false);
+                }
+              },
               className: 'w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500',
               required: true
             },
@@ -979,19 +991,19 @@ function ScenarioEditor({ scenarioId, onClose }) {
             React.createElement('input', {
               type: 'checkbox',
               className: 'sr-only',
-              checked: isActive,
-              onChange: (e) => setIsActive(e.target.checked)
+              defaultChecked: isActiveRef.current,
+              onChange: (e) => { isActiveRef.current = e.target.checked; }
             }),
             React.createElement(
               'div',
               {
-                className: `block w-14 h-8 rounded-full transition-colors ${isActive ? 'bg-green-600' : 'bg-gray-300'}`
+                className: `block w-14 h-8 rounded-full transition-colors ${isActiveRef.current ? 'bg-green-600' : 'bg-gray-300'}`
               }
             ),
             React.createElement(
               'div',
               {
-                className: `absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${isActive ? 'translate-x-6' : ''}`
+                className: `absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${isActiveRef.current ? 'translate-x-6' : ''}`
               }
             )
           ),
@@ -1032,6 +1044,9 @@ function ScenarioEditor({ scenarioId, onClose }) {
     )
   );
 }
+
+// Оборачиваем компонент в React.memo для предотвращения ре-рендеров при изменении props
+const ScenarioEditor = React.memo(ScenarioEditorComponent);
 
 window.ScenarioEditor = ScenarioEditor;
 console.log('ScenarioEditor.jsx: ScenarioEditor exported:', window.ScenarioEditor);

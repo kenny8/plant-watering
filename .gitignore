@@ -1,10 +1,41 @@
 ```
 # Build artifacts
 build/
+*.js
+*.jsx
+*.css
+*.map
 
 # Dependencies
 node_modules/
 
 # Editors
 .vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs and temp files
+*.log
+*.tmp
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# OS
+.DS_Store
+Thumbs.db
 ```
