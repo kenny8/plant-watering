@@ -142,30 +142,25 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
       isImportDone.current = true;
 
       const editor = editorRef.current;
+      let flowToImport = JSON.parse(JSON.stringify(flowDataRef.current));
 
-      // ПРОВЕРЯЕМ какие модули есть в импортируемых данных
-      console.log('Flow data structure:', JSON.stringify(flowDataRef.current).substring(0, 300));
+      // КРИТИЧЕСКИ ВАЖНО: конвертируем "Home" в "default" если есть
+      if (flowToImport.drawflow && flowToImport.drawflow.Home) {
+        console.log('Найден модуль Home, конвертирую в default...');
+        flowToImport.drawflow.default = flowToImport.drawflow.Home;
+        delete flowToImport.drawflow.Home;
+      }
 
-      // ИМПОРТИРУЕМ БЕЗ смены модуля - пусть Drawflow сам распределит
-      editor.import(flowDataRef.current);
+      // ИМПОРТИРУЕМ
+      editor.import(flowToImport);
 
-      console.log('После импорта модуль:', editor.module);
-      console.log('Доступные модули:', Object.keys(editor.drawflow.drawflow || {}));
+      // ПЕРЕКЛЮЧАЕМСЯ на default
+      editor.changeModule('default');
 
-      // Проверяем каждый модуль на наличие узлов
-      Object.keys(editor.drawflow.drawflow || {}).forEach(moduleName => {
-        const modData = editor.drawflow.drawflow[moduleName];
-        if (modData && modData.data) {
-          const count = Object.keys(modData.data).length;
-          console.log(`Модуль ${moduleName}: ${count} узлов`);
-          if (count > 0) {
-            editor.changeModule('default');
-            console.log('Переключился на default модуль');
-          }
-        }
-      });
+      console.log('✓ Flow data импортирован');
+      console.log('Текущий модуль:', editor.module);
 
-      // Сохраняем узлы из текущего модуля
+      // Сохраняем узлы
       const moduleData = editor.drawflow[editor.module];
       if (moduleData && moduleData.data) {
         Object.keys(moduleData.data).forEach(nodeId => {
@@ -174,21 +169,14 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
         console.log('Сохранено узлов:', Object.keys(nodesStateRef.current).length);
       }
 
-      // Проверка через небольшую задержку
+      // Проверка
       setTimeout(() => {
         const nodesCount = Object.keys(editor.drawflow[editor.module]?.data || {}).length;
-        console.log('Узлов в текущем модуле после импорта:', nodesCount);
-
-        // ПРОВЕРЯЕМ ВСЕ МОДУЛИ
-        let totalNodes = 0;
-        Object.keys(editor.drawflow.drawflow || {}).forEach(moduleName => {
-          const mod = editor.drawflow.drawflow[moduleName];
-          if (mod && mod.data) {
-            totalNodes += Object.keys(mod.data).length;
-          }
-        });
-        console.log('ВСЕГО узлов во всех модулях:', totalNodes);
-      }, 300);
+        console.log('Узлов в редакторе после импорта:', nodesCount);
+        if (nodesCount === 0) {
+          console.error('ОШИБКА: узлов нет! Проверьте БД');
+        }
+      }, 200);
     }
   }, [scenarioId, window.currentBuildDataRef]);
 
