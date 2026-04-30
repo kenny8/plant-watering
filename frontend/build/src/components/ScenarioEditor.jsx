@@ -1,4 +1,4 @@
-console.log('Загрузка ScenarioEditor.jsx...');
+console.log('Загрузка ScenarioEditor.jsx (fixed)');
 
 if (!window.React || !window.axios) {
   console.error('ScenarioEditor.jsx: React или axios не загружены');
@@ -12,24 +12,25 @@ const axios = window.axios;
 function ScenarioEditorComponent({ scenarioId, onClose }) {
   console.log('ScenarioEditor.jsx: Рендеринг', { scenarioId });
 
-  //_refs для данных сценария
-  const humanNameRef = useRef('');
-  const machineNameRef = useRef('');
-  const buildIdRef = useRef('');
-  const isActiveRef = useRef(true);
-  const flowDataRef = useRef(null);
+  // State для данных сценария (вместо refs)
+  const [humanName, setHumanName] = useState('');
+  const [machineName, setMachineName] = useState('');
+  const [selectedBuildId, setSelectedBuildId] = useState('');
+  const [isActive, setIsActive] = useState(true);
+  const [flowData, setFlowData] = useState(null);
 
   // State
   const [builds, setBuilds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasSelectedBuild, setHasSelectedBuild] = useState(false);
+  const [editorReady, setEditorReady] = useState(false);
+  const [currentBuildData, setCurrentBuildData] = useState(null);
 
   const editorRef = useRef(null);
   const drawflowContainerRef = useRef(null);
   const nodesStateRef = useRef({});
   const isImportDone = useRef(false);
-  const editorStarted = useRef(false);
 
   // 1. Инициализация Drawflow
   useEffect(() => {
@@ -46,47 +47,18 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
           editor.force_first_input = false;
           editor.draggable_nodes = true;
 
-          // start() - Drawflow автоматически создаст модуль 'Home'
           editor.start();
-          editorStarted.current = true;
+          setEditorReady(true);
+          console.log('✓ Drawflow редактор успешно запущен!');
+          console.log('Текущий модуль:', editor.module);
 
-          // Обработчики событий
+          // Обработчик nodeCreated
           editor.on('nodeCreated', (nodeId) => {
             const moduleData = editor.drawflow[editor.module];
             if (moduleData && moduleData.data[nodeId]) {
               nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
             }
-
-            // Добавляем обработчики для SELECT
-            setTimeout(() => {
-              const nodeElement = document.querySelector(`[id^="node-${nodeId}"]`);
-              if (nodeElement) {
-                const dataSelect = nodeElement.querySelector('.data-field-select');
-                const actionSelect = nodeElement.querySelector('.action-field-select');
-
-                if (dataSelect) {
-                  dataSelect.addEventListener('change', (e) => {
-                    const selectedValue = e.target.value;
-                    const moduleData = editor.drawflow[editor.module];
-                    if (moduleData && moduleData.data[nodeId]) {
-                      moduleData.data[nodeId].data.selected_field = selectedValue;
-                      nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
-                    }
-                  });
-                }
-
-                if (actionSelect) {
-                  actionSelect.addEventListener('change', (e) => {
-                    const selectedValue = e.target.value;
-                    const moduleData = editor.drawflow[editor.module];
-                    if (moduleData && moduleData.data[nodeId]) {
-                      moduleData.data[nodeId].data.selected_field = selectedValue;
-                      nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
-                    }
-                  });
-                }
-              }
-            }, 100);
+            bindNodeEvents(nodeId, editor);
           });
 
           editor.on('nodeRemoved', (nodeId) => {
@@ -99,9 +71,6 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
               nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
             }
           });
-
-          console.log('✓ Drawflow редактор успешно запущен!');
-          console.log('Текущий модуль:', editor.module);
 
         } catch (error) {
           console.error('✗ ОШИБКА при инициализации Drawflow:', error);
@@ -118,39 +87,31 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     };
   }, []);
 
-  // 2. Загрузка данных сборки после того как редактор запущен и buildId известен
-  // Загружаем ТОЛЬКО ОДИН РАЗ при инициализации сценария
+  // 2. Загрузка данных сборки при выборе build_id
   useEffect(() => {
-    if (editorStarted.current && buildIdRef.current && scenarioId && !window.currentBuildDataRef) {
-      console.log('Загрузка данных сборки:', buildIdRef.current);
-      loadBuildDataForReference(buildIdRef.current);
+    if (editorReady && selectedBuildId && scenarioId && !window.currentBuildDataRef) {
+      console.log('Загрузка данных сборки:', selectedBuildId);
+      loadBuildDataForReference(selectedBuildId);
     }
-  }, []); // Пустой массив - только при mount
+  }, [editorReady, selectedBuildId, scenarioId]);
 
-  // 3. Импорт flow_data ПОСЛЕ загрузки сборки
+  // 3. Импорт flow_data когда editor готов и flowData загружен
   useEffect(() => {
-    if (
-      scenarioId &&
-      editorStarted.current &&
-      window.currentBuildDataRef &&
-      flowDataRef.current &&
-      !isImportDone.current
-    ) {
+    if (editorReady && flowData && !isImportDone.current) {
       console.log('=== ИМПОРТ FLOW_DATA ===');
       isImportDone.current = true;
 
       const editor = editorRef.current;
-
-      // ИМПОРТИРУЕМ
-      editor.import(flowDataRef.current);
-
+      editor.import(flowData);
       console.log('✓ Flow data импортирован');
 
-      // Сохраняем узлы
+      // Сохраняем узлы и добавляем обработчики
       const moduleData = editor.drawflow['Home'];
       if (moduleData && moduleData.data) {
         Object.keys(moduleData.data).forEach(nodeId => {
           nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
+          // ВАЖНО: добавляем обработчики для импортированных узлов
+          bindNodeEvents(nodeId, editor);
         });
         console.log('Сохранено узлов:', Object.keys(nodesStateRef.current).length);
       }
@@ -161,7 +122,62 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
         console.log('Узлов в редакторе после импорта:', nodesCount);
       }, 200);
     }
-  }, [scenarioId, window.currentBuildDataRef]);
+  }, [editorReady, flowData]);
+
+  // Универсальная функция для добавления обработчиков к узлу
+  const bindNodeEvents = (nodeId, editor) => {
+    setTimeout(() => {
+      const nodeElement = document.querySelector(`[id^="node-${nodeId}"]`);
+      if (!nodeElement) return;
+
+      // Data node select
+      const dataSelect = nodeElement.querySelector('.data-field-select');
+      if (dataSelect) {
+        dataSelect.addEventListener('change', (e) => {
+          const selectedValue = e.target.value;
+          const moduleData = editor.drawflow[editor.module];
+          if (moduleData && moduleData.data[nodeId]) {
+            moduleData.data[nodeId].data.selected_field = selectedValue;
+            nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
+          }
+        });
+      }
+
+      // Action node select
+      const actionSelect = nodeElement.querySelector('.action-field-select');
+      if (actionSelect) {
+        actionSelect.addEventListener('change', (e) => {
+          const selectedValue = e.target.value;
+          const moduleData = editor.drawflow[editor.module];
+          if (moduleData && moduleData.data[nodeId]) {
+            moduleData.data[nodeId].data.selected_field = selectedValue;
+            nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
+          }
+        });
+      }
+
+      // Condition type select
+      const conditionSelect = nodeElement.querySelector('.condition-type-select');
+      if (conditionSelect) {
+        const compSection = nodeElement.querySelector('.condition-comparison-section');
+        const timeSection = nodeElement.querySelector('.condition-time-section');
+        const daySection = nodeElement.querySelector('.condition-dayofweek-section');
+
+        if (compSection && timeSection && daySection) {
+          conditionSelect.addEventListener('change', (e) => {
+            const type = e.target.value;
+            compSection.style.display = 'none';
+            timeSection.style.display = 'none';
+            daySection.style.display = 'none';
+
+            if (type === 'comparison') compSection.style.display = 'block';
+            else if (type === 'time') timeSection.style.display = 'block';
+            else if (type === 'dayofweek') daySection.style.display = 'block';
+          });
+        }
+      }
+    }, 100);
+  };
 
   const fetchBuilds = async () => {
     try {
@@ -186,6 +202,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
       if (!build) return;
 
       window.currentBuildDataRef = build;
+      setCurrentBuildData(build);
       console.log('✓ Данные сборки загружены:', build.human_name);
       setHasSelectedBuild(true);
     } catch (error) {
@@ -526,11 +543,11 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
       }
 
       const payload = {
-        human_name: humanNameRef.current,
-        machine_name: machineNameRef.current,
-        build_id: parseInt(buildIdRef.current),
+        human_name: humanName,
+        machine_name: machineName,
+        build_id: parseInt(selectedBuildId),
         flow_data: JSON.stringify(exportedData),
-        is_active: isActiveRef.current
+        is_active: isActive
       };
 
       if (scenarioId) {
@@ -571,10 +588,10 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
       });
       const scenario = response.data.scenario || response.data;
 
-      humanNameRef.current = scenario.human_name || '';
-      machineNameRef.current = scenario.machine_name || '';
-      buildIdRef.current = scenario.build_id || '';
-      isActiveRef.current = scenario.is_active !== undefined ? scenario.is_active : true;
+      setHumanName(scenario.human_name || '');
+      setMachineName(scenario.machine_name || '');
+      setSelectedBuildId(scenario.build_id || '');
+      setIsActive(scenario.is_active !== undefined ? scenario.is_active : true);
 
       // Парсим flow_data
       let parsedFlowData = scenario.flow_data;
@@ -586,7 +603,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
           parsedFlowData = null;
         }
       }
-      flowDataRef.current = parsedFlowData;
+      setFlowData(parsedFlowData);
 
       if (scenario.build_id) {
         setHasSelectedBuild(true);
@@ -635,8 +652,8 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
             {
               type: 'text',
               id: 'human_name',
-              defaultValue: humanNameRef.current,
-              onChange: (e) => { humanNameRef.current = e.target.value; },
+              value: humanName,
+              onChange: (e) => { setHumanName(e.target.value); },
               className: 'w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500',
               required: true
             }
@@ -656,8 +673,8 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
             {
               type: 'text',
               id: 'machine_name',
-              defaultValue: machineNameRef.current,
-              onChange: (e) => { machineNameRef.current = e.target.value; },
+              value: machineName,
+              onChange: (e) => { setMachineName(e.target.value); },
               className: 'w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500',
               required: true
             }
@@ -676,17 +693,20 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
             'select',
             {
               id: 'build_id',
-              value: buildIdRef.current,
+              value: selectedBuildId,
               onChange: (e) => {
                 const val = e.target.value;
-                buildIdRef.current = val;
-                setHasSelectedBuild(!!val);
+                setSelectedBuildId(val);
                 if (val) {
+                  // Сбрасываем перед загрузкой новой сборки
+                  window.currentBuildDataRef = null;
+                  setCurrentBuildData(null);
+                  isImportDone.current = false;
                   loadBuildDataForReference(val);
                 } else {
                   setHasSelectedBuild(false);
                   window.currentBuildDataRef = null;
-                  isImportDone.current = false;
+                  setCurrentBuildData(null);
                 }
               },
               className: 'w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500',
@@ -748,7 +768,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
           React.createElement(
             'div',
             {
-              className: `drawflow-wrapper ${!hasSelectedBuild ? 'pointer-events-none opacity-50' : ''}`
+              className: `drawflow-wrapper ${!hasSelectedBuild && !flowData ? 'pointer-events-none opacity-50' : ''}`
             },
             React.createElement(
               'div',
@@ -773,19 +793,19 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
               React.createElement('input', {
                 type: 'checkbox',
                 className: 'sr-only',
-                defaultChecked: isActiveRef.current,
-                onChange: (e) => { isActiveRef.current = e.target.checked; }
+                checked: isActive,
+                onChange: (e) => { setIsActive(e.target.checked); }
               }),
               React.createElement(
                 'div',
                 {
-                  className: `block w-14 h-8 rounded-full transition-colors ${isActiveRef.current ? 'bg-green-600' : 'bg-gray-300'}`
+                  className: `block w-14 h-8 rounded-full transition-colors ${isActive ? 'bg-green-600' : 'bg-gray-300'}`
                 }
               ),
               React.createElement(
                 'div',
                 {
-                  className: `absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${isActiveRef.current ? 'translate-x-6' : ''}`
+                  className: `absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${isActive ? 'translate-x-6' : ''}`
                 }
               )
             ),
