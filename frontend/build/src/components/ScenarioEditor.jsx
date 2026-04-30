@@ -46,10 +46,8 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
           editor.force_first_input = false;
           editor.draggable_nodes = true;
 
-          // Создаем модуль ДО start()
-          editor.addModule('default', {});
+          // start() - Drawflow автоматически создаст модуль 'Home'
           editor.start();
-          editor.changeModule('default');
           editorStarted.current = true;
 
           // Обработчики событий
@@ -142,26 +140,14 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
       isImportDone.current = true;
 
       const editor = editorRef.current;
-      let flowToImport = JSON.parse(JSON.stringify(flowDataRef.current));
-
-      // КРИТИЧЕСКИ ВАЖНО: конвертируем "Home" в "default" если есть
-      if (flowToImport.drawflow && flowToImport.drawflow.Home) {
-        console.log('Найден модуль Home, конвертирую в default...');
-        flowToImport.drawflow.default = flowToImport.drawflow.Home;
-        delete flowToImport.drawflow.Home;
-      }
 
       // ИМПОРТИРУЕМ
-      editor.import(flowToImport);
-
-      // ПЕРЕКЛЮЧАЕМСЯ на default
-      editor.changeModule('default');
+      editor.import(flowDataRef.current);
 
       console.log('✓ Flow data импортирован');
-      console.log('Текущий модуль:', editor.module);
 
       // Сохраняем узлы
-      const moduleData = editor.drawflow[editor.module];
+      const moduleData = editor.drawflow['Home'];
       if (moduleData && moduleData.data) {
         Object.keys(moduleData.data).forEach(nodeId => {
           nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
@@ -171,11 +157,8 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
 
       // Проверка
       setTimeout(() => {
-        const nodesCount = Object.keys(editor.drawflow[editor.module]?.data || {}).length;
+        const nodesCount = Object.keys(editor.drawflow['Home']?.data || {}).length;
         console.log('Узлов в редакторе после импорта:', nodesCount);
-        if (nodesCount === 0) {
-          console.error('ОШИБКА: узлов нет! Проверьте БД');
-        }
       }, 200);
     }
   }, [scenarioId, window.currentBuildDataRef]);
@@ -212,7 +195,8 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
 
   const getAllNodes = (editor) => {
     if (!editor || !editor.drawflow || !editor.module) return [];
-    const moduleData = editor.drawflow[editor.module];
+    const mod = editor.module === 'Home' ? 'Home' : editor.module;
+    const moduleData = editor.drawflow[mod];
     if (!moduleData || !moduleData.data) return [];
     return Object.values(moduleData.data);
   };
@@ -224,7 +208,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     }
 
     const editor = editorRef.current;
-    editor.changeModule('default');
+    editor.changeModule('Home');
 
     const existingNodes = getAllNodes(editor);
     const maxX = existingNodes.length > 0
@@ -282,7 +266,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     }
 
     const editor = editorRef.current;
-    editor.changeModule('default');
+    editor.changeModule('Home');
 
     const existingNodes = getAllNodes(editor);
     const maxX = existingNodes.length > 0
@@ -417,7 +401,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     }
 
     const editor = editorRef.current;
-    editor.changeModule('default');
+    editor.changeModule('Home');
 
     const existingNodes = getAllNodes(editor);
     const maxX = existingNodes.length > 0
