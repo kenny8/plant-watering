@@ -110,7 +110,9 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
       if (moduleData && moduleData.data) {
         Object.keys(moduleData.data).forEach(nodeId => {
           nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
-          // ВАЖНО: добавляем обработчики для импортированных узлов
+          // ВАЖНО: восстанавливаем состояние (значения select, чекбоксы, sections)
+          restoreNodeState(nodeId, editor);
+          // Добавляем обработчики для импортированных узлов
           bindNodeEvents(nodeId, editor);
         });
         console.log('Сохранено узлов:', Object.keys(nodesStateRef.current).length);
@@ -124,7 +126,84 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     }
   }, [editorReady, flowData]);
 
-  // Универсальная функция для добавления обработчиков к узлу
+  // Восстановление состояния узла из сохранённых данных
+  const restoreNodeState = (nodeId, editor) => {
+    setTimeout(() => {
+      const nodeElement = document.querySelector(`[id^="node-${nodeId}"]`);
+      if (!nodeElement) return;
+
+      const nodeData = editor.drawflow[editor.module]?.data?.[nodeId];
+      if (!nodeData) return;
+
+      const selectedField = nodeData.data?.selected_field;
+      const conditionType = nodeData.data?.condition_type || 'comparison';
+
+      // Восстановление data node select
+      const dataSelect = nodeElement.querySelector('.data-field-select');
+      if (dataSelect && selectedField) {
+        dataSelect.value = selectedField;
+      }
+
+      // Восстановление action node select + параметры бота
+      const actionSelect = nodeElement.querySelector('.action-field-select');
+      if (actionSelect) {
+        if (selectedField) {
+          actionSelect.value = selectedField;
+        }
+        const paramsContainer = nodeElement.querySelector('.bot-params-container');
+        const paramsList = nodeElement.querySelector('.bot-params-list');
+
+        if (paramsContainer && paramsList && selectedField) {
+          const buildData = window.currentBuildDataRef;
+          const getFields = buildData?.get_fields || [];
+          const botParamsMap = {};
+          getFields.forEach(field => {
+            const machineName = field.machine_name || field.field_name;
+            if (field.bot_parameters && Array.isArray(field.bot_parameters)) {
+              botParamsMap[machineName] = field.bot_parameters;
+            }
+          });
+
+          const botParameters = nodeData.data?.bot_parameters || {};
+          const params = botParamsMap[selectedField] || [];
+
+          paramsList.innerHTML = '';
+          if (params.length > 0) {
+            params.forEach((param, idx) => {
+              const paramHumanName = param.human_name || param.name || `Параметр ${idx + 1}`;
+              const paramMachineName = param.machine_name || `param_${idx}`;
+              const isChecked = botParameters[paramMachineName] !== undefined;
+
+              const checkboxHTML = `<label class="flex items-center space-x-2 text-xs"><input type="checkbox" class="form-checkbox bot-param-check" data-param-name="${paramMachineName}" data-param-result="${param.result || ''}" ${isChecked ? 'checked' : ''} /><span>${paramHumanName}</span></label>`;
+              paramsList.insertAdjacentHTML('beforeend', checkboxHTML);
+            });
+            paramsContainer.style.display = 'block';
+          }
+       }
+      }
+
+      // Восстановление condition type + sections
+      const conditionSelect = nodeElement.querySelector('.condition-type-select');
+      if (conditionSelect) {
+        const compSection = nodeElement.querySelector('.condition-comparison-section');
+        const timeSection = nodeElement.querySelector('.condition-time-section');
+        const daySection = nodeElement.querySelector('.condition-dayofweek-section');
+
+        if (compSection && timeSection && daySection) {
+          conditionSelect.value = conditionType;
+          compSection.style.display = 'none';
+          timeSection.style.display = 'none';
+          daySection.style.display = 'none';
+
+          if (conditionType === 'comparison') compSection.style.display = 'block';
+          else if (conditionType === 'time') timeSection.style.display = 'block';
+          else if (conditionType === 'dayofweek') daySection.style.display = 'block';
+        }
+      }
+    }, 50);
+  };
+
+
   const bindNodeEvents = (nodeId, editor) => {
     setTimeout(() => {
       const nodeElement = document.querySelector(`[id^="node-${nodeId}"]`);
