@@ -104,6 +104,8 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
       const editor = editorRef.current;
       editor.import(flowData);
       console.log('✓ Flow data импортирован');
+      console.log('[IMPORT] currentBuildDataRef:', window.currentBuildDataRef); // ДОБАВИТЬ
+      console.log('[IMPORT] build.get_fields:', window.currentBuildDataRef?.get_fields); // ДОБАВИТЬ
 
       // Сохраняем узлы и добавляем обработчики
       const moduleData = editor.drawflow['Home'];
@@ -157,6 +159,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
           const buildData = window.currentBuildDataRef;
           const getFields = buildData?.get_fields || [];
           const botParamsMap = {};
+          console.log('[restoreNodeState] buildData:', buildData); 
           getFields.forEach(field => {
             const machineName = field.machine_name || field.field_name;
             if (field.bot_parameters && Array.isArray(field.bot_parameters)) {
@@ -166,6 +169,10 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
 
           const botParameters = nodeData.data?.bot_parameters || {};
           const params = botParamsMap[selectedField] || [];
+          console.log('[restoreNodeState] selectedField:', selectedField); // ДОБАВИТЬ
+          console.log('[restoreNodeState] params:', params); // ДОБАВИТЬ
+          console.log('[restoreNodeState] botParamsMap keys:', Object.keys(botParamsMap)); // ДОБАВИТЬ
+          console.log('[restoreNodeState] params.length:', params.length); // ДОБАВИТЬ
 
           paramsList.innerHTML = '';
           if (params.length > 0) {
@@ -178,6 +185,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
               paramsList.insertAdjacentHTML('beforeend', checkboxHTML);
             });
             paramsContainer.style.display = 'block';
+            console.log('[restoreNodeState] paramsContainer displayed'); 
           }
        }
       }
