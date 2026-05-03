@@ -104,8 +104,8 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
       // Ждём 100мс чтобы currentBuildDataRef успел загрузиться
       setTimeout(() => {
         console.log('[IMPORT] setTimeout callback started');
-        console.log('[IMPORT] editor exists:', !!editorRef.current);
-        console.log('[IMPORT] editor.drawflow:', editor.drawflow);
+        console.log('[IMPORT] editor exists:', !!editor);
+        console.log('[IMPORT] editor.drawflow:', editor?.drawflow);
         if (!window.currentBuildDataRef) {
           console.error('[IMPORT] КРИТИЧНО: currentBuildDataRef так и не загрузился!');
           return;
