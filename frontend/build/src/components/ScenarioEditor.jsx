@@ -1,4 +1,4 @@
-console.log('Загрузка ScenarioEditor.jsx (fixed)');
+console.log('Загрузка ScenarioEditor.jsx (fixed v2)');
 
 if (!window.React || !window.axios) {
   console.error('ScenarioEditor.jsx: React или axios не загружены');
@@ -12,14 +12,13 @@ const axios = window.axios;
 function ScenarioEditorComponent({ scenarioId, onClose }) {
   console.log('ScenarioEditor.jsx: Рендеринг', { scenarioId });
 
-  // State для данных сценария (вместо refs)
+  // State
   const [humanName, setHumanName] = useState('');
   const [machineName, setMachineName] = useState('');
   const [selectedBuildId, setSelectedBuildId] = useState('');
   const [isActive, setIsActive] = useState(true);
   const [flowData, setFlowData] = useState(null);
 
-  // State
   const [builds, setBuilds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -54,11 +53,11 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
 
           // Обработчик nodeCreated
           editor.on('nodeCreated', (nodeId) => {
-            const moduleData = editor.drawflow[editor.module];
+            const moduleData = editor.drawflow[editor.module] || editor.drawflow?.drawflow?.[editor.module];
             if (moduleData && moduleData.data[nodeId]) {
               nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
             }
-            bindNodeEvents(nodeId, editor, editor.module);
+            bindNodeEvents(nodeId, editor);
           });
 
           editor.on('nodeRemoved', (nodeId) => {
@@ -66,7 +65,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
           });
 
           editor.on('nodeMoved', (nodeId) => {
-            const moduleData = editor.drawflow[editor.module];
+            const moduleData = editor.drawflow[editor.module] || editor.drawflow?.drawflow?.[editor.module];
             if (moduleData && moduleData.data[nodeId]) {
               nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
             }
@@ -95,144 +94,144 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     }
   }, [editorReady, selectedBuildId, scenarioId]);
 
-  // 3. Импорт flow_data когда editor готов и flowData загружен
+  // 3. Импорт flow_data, когда editor готов и flowData загружен, и есть данные сборки
   useEffect(() => {
-    if (editorReady && flowData && !isImportDone.current) {
+    if (editorReady && flowData && !isImportDone.current && window.currentBuildDataRef) {
       console.log('=== ИМПОРТ FLOW_DATA ===');
       isImportDone.current = true;
 
-      const tryImport = () => {
-        const editor = editorRef.current;
-        if (!editor) {
-          setTimeout(tryImport, 50);
-          return;
-        }
-
-        editor.import(flowData);
-        console.log('✓ Flow data импортирован');
-
-        // Определяем реальное имя модуля после импорта
-        const moduleNames = Object.keys(editor.drawflow);
-        console.log('Доступные модули после импорта:', moduleNames);
-        let activeModule = moduleNames.length > 0 ? moduleNames[0] : 'Home';
-        console.log('Будет использован модуль:', activeModule);
-
-        // Приводим к единому имени 'Home', если модуль называется 'home'
-        if (activeModule !== 'Home' && editor.drawflow['home']) {
-          editor.drawflow['Home'] = editor.drawflow['home'];
-          delete editor.drawflow['home'];
-          activeModule = 'Home';
-          editor.changeModule('Home');
-        } else if (activeModule !== 'Home') {
-          // Если имя не home и не Home, переключаемся на него
-          editor.changeModule(activeModule);
-        } else {
-          editor.changeModule('Home');
-        }
-
-        const moduleData = editor.drawflow[activeModule];
-        if (moduleData && moduleData.data) {
-          Object.keys(moduleData.data).forEach((nodeId) => {
-            nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
-            restoreNodeState(nodeId, editor, activeModule);
-            bindNodeEvents(nodeId, editor, activeModule);
-          });
-          console.log('Сохранено узлов:', Object.keys(nodesStateRef.current).length);
-        } else {
-          console.error('Не удалось получить данные модуля после импорта');
-        }
-
-        // Финальная проверка
-        setTimeout(() => {
-          const nodesCount = Object.keys(editor.drawflow[activeModule]?.data || {}).length;
-          console.log('Узлов в редакторе после импорта:', nodesCount);
-        }, 200);
-      };
-
-      setTimeout(tryImport, 100);
-    }
-  }, [editorReady, flowData]);
-
-  // Восстановление состояния узла из сохранённых данных
-  const restoreNodeState = (nodeId, editor, moduleName) => {
-    const attemptRestore = (retries = 5) => {
-      const nodeElement = document.querySelector(`[id^="node-${nodeId}"]`);
-      if (!nodeElement) {
-        if (retries > 0) {
-          setTimeout(() => attemptRestore(retries - 1), 100);
-        }
+      const editor = editorRef.current;
+      if (!editor) {
+        console.error('[ИМПОРТ] Редактор не доступен');
         return;
       }
 
-      const nodeData = editor.drawflow[moduleName]?.data?.[nodeId];
-      if (!nodeData) return;
+      // Импортируем flow data
+      editor.import(flowData);
 
-      const selectedField = nodeData.data?.selected_field;
-      const conditionType = nodeData.data?.condition_type || 'comparison';
-
-      // Data node select
-      const dataSelect = nodeElement.querySelector('.data-field-select');
-      if (dataSelect && selectedField) {
-        dataSelect.value = selectedField;
-        dataSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      // Исправляем структуру: иногда import добавляет лишний уровень drawflow
+      if (editor.drawflow && editor.drawflow.drawflow) {
+        console.log('[ИМПОРТ] Обнаружена вложенная структура drawflow, извлекаем');
+        editor.drawflow = editor.drawflow.drawflow;
       }
 
-      // Action node select + параметры бота
-      const actionSelect = nodeElement.querySelector('.action-field-select');
-      if (actionSelect && selectedField) {
-        actionSelect.value = selectedField;
-        const botParameters = nodeData.data?.bot_parameters || {};
-        renderBotParameters(nodeId, editor, selectedField, botParameters);
-        actionSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      console.log('✓ Flow data импортирован');
+      console.log('[ИМПОРТ] editor.drawflow:', editor.drawflow);
+      console.log('[ИМПОРТ] editor.drawflow.Home:', editor.drawflow['Home']);
+      console.log('[ИМПОРТ] currentBuildDataRef:', window.currentBuildDataRef);
+      console.log('[ИМПОРТ] build.get_fields:', window.currentBuildDataRef?.get_fields);
+
+      const moduleData = editor.drawflow['Home'];
+      if (moduleData && moduleData.data) {
+        Object.keys(moduleData.data).forEach(nodeId => {
+          nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
+          // Сначала привязываем события
+          bindNodeEvents(nodeId, editor);
+          // Затем восстанавливаем состояние (с повторными попытками)
+          restoreNodeState(nodeId, editor);
+        });
+        console.log('Сохранено узлов:', Object.keys(nodesStateRef.current).length);
+      } else {
+        console.error('[ИМПОРТ] Модуль Home или его data не найдены после импорта');
       }
 
-      // Condition type + sections
-      const conditionSelect = nodeElement.querySelector('.condition-type-select');
-      if (conditionSelect) {
-        const compSection = nodeElement.querySelector('.condition-comparison-section');
-        const timeSection = nodeElement.querySelector('.condition-time-section');
-        const daySection = nodeElement.querySelector('.condition-dayofweek-section');
+      // Для диагностики
+      setTimeout(() => {
+        const nodesCount = Object.keys(editor.drawflow['Home']?.data || {}).length;
+        console.log('Узлов в редакторе после импорта:', nodesCount);
+      }, 500);
+    }
+  }, [editorReady, flowData, window.currentBuildDataRef]);
 
-        if (compSection && timeSection && daySection) {
-          conditionSelect.value = conditionType;
-          compSection.style.display = 'none';
-          timeSection.style.display = 'none';
-          daySection.style.display = 'none';
+  // Восстановление состояния узла из сохранённых данных (с несколькими попытками)
+  const restoreNodeState = (nodeId, editor, attempt = 0) => {
+    const MAX_ATTEMPTS = 10;
+    const nodeElement = document.querySelector(`[id^="node-${nodeId}"]`);
+    
+    if (!nodeElement && attempt < MAX_ATTEMPTS) {
+      setTimeout(() => restoreNodeState(nodeId, editor, attempt + 1), 50);
+      return;
+    }
+    
+    if (!nodeElement) {
+      console.warn(`Не удалось найти DOM-элемент для узла ${nodeId} после ${MAX_ATTEMPTS} попыток`);
+      return;
+    }
 
-          if (conditionType === 'comparison') compSection.style.display = 'block';
-          else if (conditionType === 'time') timeSection.style.display = 'block';
-          else if (conditionType === 'dayofweek') daySection.style.display = 'block';
+    const nodeData = editor.drawflow[editor.module]?.data?.[nodeId];
+    if (!nodeData) {
+      console.warn(`Нет данных для узла ${nodeId}`);
+      return;
+    }
 
-          conditionSelect.dispatchEvent(new Event('change', { bubbles: true }));
-        }
+    const selectedField = nodeData.data?.selected_field;
+    const conditionType = nodeData.data?.condition_type || 'comparison';
 
-        // Восстановление значений condition
-        if (conditionType === 'comparison' && compSection) {
-          const operator = nodeData.data?.operator || '>';
-          const value = nodeData.data?.value || 0;
-          const operatorSelect = compSection.querySelector('.condition-operator');
-          const valueInput = compSection.querySelector('.condition-value');
-          if (operatorSelect) operatorSelect.value = operator;
-          if (valueInput) valueInput.value = value;
-        } else if (conditionType === 'time' && timeSection) {
-          const time = nodeData.data?.time || '';
-          const timeInput = timeSection.querySelector('.time-input');
-          if (timeInput) timeInput.value = time;
-        } else if (conditionType === 'dayofweek' && daySection) {
-          const days = nodeData.data?.days || [];
-          const dayCheckboxes = daySection.querySelectorAll('.day-checkbox');
-          dayCheckboxes.forEach((cb) => {
-            const day = parseInt(cb.getAttribute('data-day'));
-            cb.checked = days.includes(day);
-          });
-        }
+    // Восстановление data node select
+    const dataSelect = nodeElement.querySelector('.data-field-select');
+    if (dataSelect && selectedField) {
+      dataSelect.value = selectedField;
+      const changeEvent = new Event('change', { bubbles: true });
+      dataSelect.dispatchEvent(changeEvent);
+      console.log(`[Восстановление] Data node ${nodeId}: selected field = ${selectedField}`);
+    }
+
+    // Восстановление action node select + параметры бота
+    const actionSelect = nodeElement.querySelector('.action-field-select');
+    if (actionSelect && selectedField) {
+      actionSelect.value = selectedField;
+      const botParameters = nodeData.data?.bot_parameters || {};
+      renderBotParameters(nodeId, editor, selectedField, botParameters);
+      console.log(`[Восстановление] Action node ${nodeId}: selected field = ${selectedField}`, botParameters);
+      const changeEvent = new Event('change', { bubbles: true });
+      actionSelect.dispatchEvent(changeEvent);
+    }
+
+    // Восстановление condition type + sections
+    const conditionSelect = nodeElement.querySelector('.condition-type-select');
+    if (conditionSelect) {
+      const compSection = nodeElement.querySelector('.condition-comparison-section');
+      const timeSection = nodeElement.querySelector('.condition-time-section');
+      const daySection = nodeElement.querySelector('.condition-dayofweek-section');
+
+      if (compSection && timeSection && daySection) {
+        conditionSelect.value = conditionType;
+        const changeEvent = new Event('change', { bubbles: true });
+        conditionSelect.dispatchEvent(changeEvent);
+        
+        compSection.style.display = 'none';
+        timeSection.style.display = 'none';
+        daySection.style.display = 'none';
+
+        if (conditionType === 'comparison') compSection.style.display = 'block';
+        else if (conditionType === 'time') timeSection.style.display = 'block';
+        else if (conditionType === 'dayofweek') daySection.style.display = 'block';
       }
-
-      console.log('[restoreNodeState] Completed for node:', nodeId, { selectedField, conditionType });
-    };
-
-    attemptRestore();
+      
+      // Восстановление значений condition
+      if (conditionType === 'comparison') {
+        const operator = nodeData.data?.operator || '>';
+        const value = nodeData.data?.value || 0;
+        const operatorSelect = compSection?.querySelector('.condition-operator');
+        const valueInput = compSection?.querySelector('.condition-value');
+        if (operatorSelect) operatorSelect.value = operator;
+        if (valueInput) valueInput.value = value;
+      } else if (conditionType === 'time') {
+        const time = nodeData.data?.time || '';
+        const timeInput = timeSection?.querySelector('.time-input');
+        if (timeInput) timeInput.value = time;
+      } else if (conditionType === 'dayofweek') {
+        const days = nodeData.data?.days || [];
+        const dayCheckboxes = daySection?.querySelectorAll('.day-checkbox');
+        dayCheckboxes?.forEach(cb => {
+          const day = parseInt(cb.getAttribute('data-day'));
+          cb.checked = days.includes(day);
+        });
+      }
+      console.log(`[Восстановление] Condition node ${nodeId}: condition type = ${conditionType}`);
+    }
   };
+
 
   // Единая функция отрисовки параметров бота для action node
   const renderBotParameters = (nodeId, editor, selectedField, botParameters = {}) => {
@@ -283,7 +282,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
           const paramResult = e.target.getAttribute('data-param-result');
           const isChecked = e.target.checked;
 
-          const moduleData = editor.drawflow[editor.module];  // используем текущий модуль редактора
+          const moduleData = editor.drawflow[editor.module];
           if (moduleData && moduleData.data[nodeId]) {
             const currentParams = moduleData.data[nodeId].data.bot_parameters || {};
             if (isChecked) {
@@ -301,22 +300,18 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     }
   };
 
-  // Привязка событий к узлу (использует moduleName)
-  const bindNodeEvents = (nodeId, editor, moduleName) => {
-    const attemptBind = (retries = 5) => {
+  const bindNodeEvents = (nodeId, editor) => {
+    setTimeout(() => {
       const nodeElement = document.querySelector(`[id^="node-${nodeId}"]`);
-      if (!nodeElement) {
-        if (retries > 0) setTimeout(() => attemptBind(retries - 1), 100);
-        return;
-      }
+      if (!nodeElement) return;
 
       // Data node select
       const dataSelect = nodeElement.querySelector('.data-field-select');
       if (dataSelect) {
         dataSelect.addEventListener('change', (e) => {
           const selectedValue = e.target.value;
-          const moduleData = editor.drawflow[moduleName];
-          if (moduleData?.data?.[nodeId]) {
+          const moduleData = editor.drawflow[editor.module];
+          if (moduleData && moduleData.data[nodeId]) {
             moduleData.data[nodeId].data.selected_field = selectedValue;
             nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
           }
@@ -328,11 +323,12 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
       if (actionSelect) {
         actionSelect.addEventListener('change', (e) => {
           const selectedValue = e.target.value.trim();
-          const moduleData = editor.drawflow[moduleName];
-          if (moduleData?.data?.[nodeId]) {
+          const moduleData = editor.drawflow[editor.module];
+          if (moduleData && moduleData.data[nodeId]) {
             moduleData.data[nodeId].data.selected_field = selectedValue;
             moduleData.data[nodeId].data.bot_parameters = moduleData.data[nodeId].data.bot_parameters || {};
             nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
+            // Перерисовываем параметры бота
             renderBotParameters(nodeId, editor, selectedValue, moduleData.data[nodeId].data.bot_parameters);
           }
         });
@@ -351,15 +347,14 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
             compSection.style.display = 'none';
             timeSection.style.display = 'none';
             daySection.style.display = 'none';
+
             if (type === 'comparison') compSection.style.display = 'block';
             else if (type === 'time') timeSection.style.display = 'block';
             else if (type === 'dayofweek') daySection.style.display = 'block';
           });
         }
       }
-    };
-
-    attemptBind();
+    }, 100);
   };
 
   const fetchBuilds = async () => {
@@ -534,55 +529,13 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
           if (actionSelect && paramsContainer && paramsList) {
             const updateParams = () => {
               const selectedValue = actionSelect.value;
-              const moduleData = editor.drawflow[editor.module];  // используем текущий модуль
+              const moduleData = editor.drawflow[editor.module];
               if (moduleData && moduleData.data[nodeId]) {
                 moduleData.data[nodeId].data.selected_field = selectedValue;
                 nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
               }
 
-              paramsList.innerHTML = '';
-
-              if (selectedValue && botParamsMap[selectedValue]) {
-                const params = botParamsMap[selectedValue];
-                params.forEach((param, idx) => {
-                  const paramHumanName = param.human_name || param.name || `Параметр ${idx + 1}`;
-                  const paramMachineName = param.machine_name || `param_${idx}`;
-                  const paramResult = param.result || '';
-
-                  paramsList.insertAdjacentHTML('beforeend', `
-                    <label class="flex items-center space-x-2 text-xs">
-                      <input type="checkbox" class="form-checkbox bot-param-check"
-                        data-param-name="${paramMachineName}"
-                        data-param-result="${paramResult}" />
-                      <span>${paramHumanName}</span>
-                    </label>
-                  `);
-                });
-
-                paramsContainer.style.display = 'block';
-
-                paramsList.querySelectorAll('.bot-param-check').forEach(cb => {
-                  cb.addEventListener('change', (e) => {
-                    const paramName = e.target.getAttribute('data-param-name');
-                    const paramResult = e.target.getAttribute('data-param-result');
-                    const isChecked = e.target.checked;
-
-                    const moduleData = editor.drawflow[editor.module];
-                    if (moduleData && moduleData.data[nodeId]) {
-                      const currentParams = moduleData.data[nodeId].data.bot_parameters || {};
-                      if (isChecked) {
-                        currentParams[paramName] = paramResult;
-                      } else {
-                        delete currentParams[paramName];
-                      }
-                      moduleData.data[nodeId].data.bot_parameters = currentParams;
-                      nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
-                    }
-                  });
-                });
-              } else {
-                paramsContainer.style.display = 'none';
-              }
+              renderBotParameters(nodeId, editor, selectedValue, moduleData.data[nodeId].data.bot_parameters || {});
             };
 
             actionSelect.addEventListener('change', updateParams);
@@ -753,7 +706,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     }
   };
 
-  // Загрузка сценария при mount
+  // Загрузка необходимых данных при монтировании
   useEffect(() => {
     fetchBuilds();
     if (scenarioId) {
@@ -786,14 +739,18 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
           parsedFlowData = null;
         }
       }
-      setFlowData(parsedFlowData);
-
+      // Устанавливаем flowData только когда данные сборки загружены (вызовется позже)
       if (scenario.build_id) {
-        setHasSelectedBuild(true);
-        // Загружаем данные сборки СРАЗУ (чтобы restoreNodeState мог работать)
+        // Сначала загружаем сборку, потом устанавливаем flowData
         window.currentBuildDataRef = null;
         setCurrentBuildData(null);
-        loadBuildDataForReference(scenario.build_id);
+        loadBuildDataForReference(scenario.build_id).then(() => {
+          setFlowData(parsedFlowData);
+          setHasSelectedBuild(true);
+        });
+      } else {
+        setFlowData(parsedFlowData);
+        setHasSelectedBuild(false);
       }
 
       setLoading(false);
@@ -885,11 +842,14 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
                 const val = e.target.value;
                 setSelectedBuildId(val);
                 if (val) {
-                  // Сбрасываем перед загрузкой новой сборки
                   window.currentBuildDataRef = null;
                   setCurrentBuildData(null);
                   isImportDone.current = false;
-                  loadBuildDataForReference(val);
+                  loadBuildDataForReference(val).then(() => {
+                    // После загрузки сборки сбрасываем flowData для переимпорта? Нет, лучше оставить имеющийся
+                    // Если сборка сменилась, нужно перезагрузить flowData? Лучше не трогать.
+                    // Но если был импорт, то он останется с неправильными полями. Пока оставим как есть.
+                  });
                 } else {
                   setHasSelectedBuild(false);
                   window.currentBuildDataRef = null;
