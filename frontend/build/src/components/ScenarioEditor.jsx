@@ -148,6 +148,8 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
       const dataSelect = nodeElement.querySelector('.data-field-select');
       if (dataSelect && selectedField) {
         dataSelect.value = selectedField;
+        const changeEvent = new Event('change', { bubbles: true });
+        dataSelect.dispatchEvent(changeEvent);
       }
 
       // Восстановление action node select + параметры бота
@@ -156,6 +158,15 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
         actionSelect.value = selectedField;
         const botParameters = nodeData.data?.bot_parameters || {};
         renderBotParameters(nodeId, editor, selectedField, botParameters);
+        console.log('[restoreNodeState] Action node:', {
+          nodeId,
+          selectedField,
+          actionSelectValue: actionSelect.value,
+          hasBotParameters: Object.keys(botParameters).length > 0,
+          botParameters
+        });
+        const changeEvent = new Event('change', { bubbles: true });
+        actionSelect.dispatchEvent(changeEvent);
       }
 
       // Восстановление condition type + sections
@@ -167,6 +178,8 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
 
         if (compSection && timeSection && daySection) {
           conditionSelect.value = conditionType;
+          const changeEvent = new Event('change', { bubbles: true });
+          conditionSelect.dispatchEvent(changeEvent);
           compSection.style.display = 'none';
           timeSection.style.display = 'none';
           daySection.style.display = 'none';
@@ -196,12 +209,22 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
           });
         }
       }
+      console.log('[restoreNodeState] Completed for node:', nodeId, {
+        hasSelectedField: !!selectedField,
+        conditionType
+      });
     }, 200);
   };
 
 
   // Единая функция отрисовки параметров бота для action node
   const renderBotParameters = (nodeId, editor, selectedField, botParameters = {}) => {
+    console.log('[renderBotParameters] Called with:', {
+      nodeId,
+      selectedField,
+      botParameters,
+      buildData: window.currentBuildDataRef ? 'loaded' : 'missing'
+    });
     const nodeElement = document.querySelector(`[id^="node-${nodeId}"]`);
     if (!nodeElement) return;
 
@@ -291,6 +314,12 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
             nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
             // Перерисовываем параметры бота
             renderBotParameters(nodeId, editor, selectedValue, moduleData.data[nodeId].data.bot_parameters);
+            console.log('[renderBotParameters] Lookup:', {
+              selectedField,
+              botParamsMapKeys: Object.keys(botParamsMap),
+              paramsCount: params.length,
+              hasMatch: !!botParamsMap[selectedField]
+            });
           }
         });
       }
