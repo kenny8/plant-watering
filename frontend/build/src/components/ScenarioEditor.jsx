@@ -103,6 +103,9 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
 
       // Ждём 100мс чтобы currentBuildDataRef успел загрузиться
       setTimeout(() => {
+        console.log('[IMPORT] setTimeout callback started');
+        console.log('[IMPORT] editor exists:', !!editorRef.current);
+        console.log('[IMPORT] editor.drawflow:', editor.drawflow);
         if (!window.currentBuildDataRef) {
           console.error('[IMPORT] КРИТИЧНО: currentBuildDataRef так и не загрузился!');
           return;
@@ -111,6 +114,9 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
         const editor = editorRef.current;
         editor.import(flowData);
         console.log('✓ Flow data импортирован');
+        console.log('[IMPORT] editor.drawflow:', editor.drawflow);
+        console.log('[IMPORT] editor.drawflow.Home:', editor.drawflow['Home']);
+        console.log('[IMPORT] moduleData:', editor.drawflow['Home']);
         console.log('[IMPORT] currentBuildDataRef:', window.currentBuildDataRef);
         console.log('[IMPORT] build.get_fields:', window.currentBuildDataRef?.get_fields);
 
