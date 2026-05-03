@@ -234,7 +234,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
       const actionSelect = nodeElement.querySelector('.action-field-select');
       if (actionSelect) {
         actionSelect.addEventListener('change', (e) => {
-          const selectedValue = e.target.value;
+          const selectedValue = e.target.value.trim();
           const moduleData = editor.drawflow[editor.module];
           if (moduleData && moduleData.data[nodeId]) {
             moduleData.data[nodeId].data.selected_field = selectedValue;
