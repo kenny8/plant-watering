@@ -148,46 +148,10 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
 
       // Восстановление action node select + параметры бота
       const actionSelect = nodeElement.querySelector('.action-field-select');
-      if (actionSelect) {
-        if (selectedField) {
-          actionSelect.value = selectedField;
-        }
-        const paramsContainer = nodeElement.querySelector('.bot-params-container');
-        const paramsList = nodeElement.querySelector('.bot-params-list');
-
-        if (paramsContainer && paramsList && selectedField) {
-          const buildData = window.currentBuildDataRef;
-          const getFields = buildData?.get_fields || [];
-          const botParamsMap = {};
-          console.log('[restoreNodeState] buildData:', buildData); 
-          getFields.forEach(field => {
-            const machineName = field.machine_name || field.field_name;
-            if (field.bot_parameters && Array.isArray(field.bot_parameters)) {
-              botParamsMap[machineName] = field.bot_parameters;
-            }
-          });
-
-          const botParameters = nodeData.data?.bot_parameters || {};
-          const params = botParamsMap[selectedField] || [];
-          console.log('[restoreNodeState] selectedField:', selectedField); // ДОБАВИТЬ
-          console.log('[restoreNodeState] params:', params); // ДОБАВИТЬ
-          console.log('[restoreNodeState] botParamsMap keys:', Object.keys(botParamsMap)); // ДОБАВИТЬ
-          console.log('[restoreNodeState] params.length:', params.length); // ДОБАВИТЬ
-
-          paramsList.innerHTML = '';
-          if (params.length > 0) {
-            params.forEach((param, idx) => {
-              const paramHumanName = param.human_name || param.name || `Параметр ${idx + 1}`;
-              const paramMachineName = param.machine_name || `param_${idx}`;
-              const isChecked = botParameters[paramMachineName] !== undefined;
-
-              const checkboxHTML = `<label class="flex items-center space-x-2 text-xs"><input type="checkbox" class="form-checkbox bot-param-check" data-param-name="${paramMachineName}" data-param-result="${param.result || ''}" ${isChecked ? 'checked' : ''} /><span>${paramHumanName}</span></label>`;
-              paramsList.insertAdjacentHTML('beforeend', checkboxHTML);
-            });
-            paramsContainer.style.display = 'block';
-            console.log('[restoreNodeState] paramsContainer displayed'); 
-          }
-       }
+      if (actionSelect && selectedField) {
+        actionSelect.value = selectedField;
+        const botParameters = nodeData.data?.bot_parameters || {};
+        renderBotParameters(nodeId, editor, selectedField, botParameters);
       }
 
       // Восстановление condition type + sections
@@ -207,10 +171,91 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
           else if (conditionType === 'time') timeSection.style.display = 'block';
           else if (conditionType === 'dayofweek') daySection.style.display = 'block';
         }
+        // Восстановление значений condition
+        if (conditionType === 'comparison') {
+          const operator = nodeData.data?.operator || '>';
+          const value = nodeData.data?.value || 0;
+          const operatorSelect = compSection.querySelector('.condition-operator');
+          const valueInput = compSection.querySelector('.condition-value');
+          if (operatorSelect) operatorSelect.value = operator;
+          if (valueInput) valueInput.value = value;
+        } else if (conditionType === 'time') {
+          const time = nodeData.data?.time || '';
+          const timeInput = timeSection.querySelector('.time-input');
+          if (timeInput) timeInput.value = time;
+        } else if (conditionType === 'dayofweek') {
+          const days = nodeData.data?.days || [];
+          const dayCheckboxes = daySection.querySelectorAll('.day-checkbox');
+          dayCheckboxes.forEach(cb => {
+            const day = parseInt(cb.getAttribute('data-day'));
+            cb.checked = days.includes(day);
+          });
+        }
       }
-    }, 50);
+    }, 200);
   };
 
+
+  // Единая функция отрисовки параметров бота для action node
+  const renderBotParameters = (nodeId, editor, selectedField, botParameters = {}) => {
+    const nodeElement = document.querySelector(`[id^="node-${nodeId}"]`);
+    if (!nodeElement) return;
+
+    const paramsContainer = nodeElement.querySelector('.bot-params-container');
+    const paramsList = nodeElement.querySelector('.bot-params-list');
+
+    if (!paramsContainer || !paramsList) return;
+
+    // Получаем botParamsMap из текущей сборки
+    const buildData = window.currentBuildDataRef;
+    const getFields = buildData?.get_fields || [];
+    const botParamsMap = {};
+    getFields.forEach(field => {
+      const machineName = field.machine_name || field.field_name;
+      if (field.bot_parameters && Array.isArray(field.bot_parameters)) {
+        botParamsMap[machineName] = field.bot_parameters;
+      }
+    });
+
+    const params = botParamsMap[selectedField] || [];
+    paramsList.innerHTML = '';
+
+    if (params.length > 0) {
+      params.forEach((param, idx) => {
+        const paramHumanName = param.human_name || param.name || `Параметр ${idx + 1}`;
+        const paramMachineName = param.machine_name || `param_${idx}`;
+        const paramResult = param.result || '';
+        const isChecked = botParameters[paramMachineName] !== undefined;
+
+        const checkboxHTML = `<label class="flex items-center space-x-2 text-xs"><input type="checkbox" class="form-checkbox bot-param-check" data-param-name="${paramMachineName}" data-param-result="${paramResult}" ${isChecked ? 'checked' : ''} /><span>${paramHumanName}</span></label>`;
+        paramsList.insertAdjacentHTML('beforeend', checkboxHTML);
+      });
+      paramsContainer.style.display = 'block';
+
+      // Добавляем обработчики для чекбоксов
+      paramsList.querySelectorAll('.bot-param-check').forEach(cb => {
+        cb.addEventListener('change', (e) => {
+          const paramName = e.target.getAttribute('data-param-name');
+          const paramResult = e.target.getAttribute('data-param-result');
+          const isChecked = e.target.checked;
+
+          const moduleData = editor.drawflow[editor.module];
+          if (moduleData && moduleData.data[nodeId]) {
+            const currentParams = moduleData.data[nodeId].data.bot_parameters || {};
+            if (isChecked) {
+              currentParams[paramName] = paramResult;
+            } else {
+              delete currentParams[paramName];
+            }
+            moduleData.data[nodeId].data.bot_parameters = currentParams;
+            nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
+          }
+        });
+      });
+    } else {
+      paramsContainer.style.display = 'none';
+    }
+  };
 
   const bindNodeEvents = (nodeId, editor) => {
     setTimeout(() => {
@@ -238,7 +283,10 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
           const moduleData = editor.drawflow[editor.module];
           if (moduleData && moduleData.data[nodeId]) {
             moduleData.data[nodeId].data.selected_field = selectedValue;
+            moduleData.data[nodeId].data.bot_parameters = moduleData.data[nodeId].data.bot_parameters || {};
             nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
+            // Перерисовываем параметры бота
+            renderBotParameters(nodeId, editor, selectedValue, moduleData.data[nodeId].data.bot_parameters);
           }
         });
       }
