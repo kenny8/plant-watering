@@ -99,40 +99,36 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
   useEffect(() => {
     if (editorReady && flowData && !isImportDone.current) {
       console.log('=== ИМПОРТ FLOW_DATA ===');
-  
-      // Ждём если данные сборки ещё не загружены
-      if (!window.currentBuildDataRef) {
-        console.log('[IMPORT] currentBuildDataRef ещё не загружен, ждём 300ms...');
-        isImportDone.current = false;
-        setTimeout(() => {
-          isImportDone.current = true;
-          console.log('[IMPORT] Retry import after build data loaded');
-        }, 300);
-        return;
-      }
-  
       isImportDone.current = true;
 
-      const editor = editorRef.current;
-      editor.import(flowData);
-      console.log('✓ Flow data импортирован');
-      console.log('[IMPORT] currentBuildDataRef:', window.currentBuildDataRef);
-      console.log('[IMPORT] build.get_fields:', window.currentBuildDataRef?.get_fields);
-
-      const moduleData = editor.drawflow['Home'];
-      if (moduleData && moduleData.data) {
-        Object.keys(moduleData.data).forEach(nodeId => {
-          nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
-          restoreNodeState(nodeId, editor);
-          bindNodeEvents(nodeId, editor);
-        });
-        console.log('Сохранено узлов:', Object.keys(nodesStateRef.current).length);
-      }
-
+      // Ждём 100мс чтобы currentBuildDataRef успел загрузиться
       setTimeout(() => {
-        const nodesCount = Object.keys(editor.drawflow['Home']?.data || {}).length;
-        console.log('Узлов в редакторе после импорта:', nodesCount);
-      }, 200);
+        if (!window.currentBuildDataRef) {
+          console.error('[IMPORT] КРИТИЧНО: currentBuildDataRef так и не загрузился!');
+          return;
+        }
+
+        const editor = editorRef.current;
+        editor.import(flowData);
+        console.log('✓ Flow data импортирован');
+        console.log('[IMPORT] currentBuildDataRef:', window.currentBuildDataRef);
+        console.log('[IMPORT] build.get_fields:', window.currentBuildDataRef?.get_fields);
+
+        const moduleData = editor.drawflow['Home'];
+        if (moduleData && moduleData.data) {
+          Object.keys(moduleData.data).forEach(nodeId => {
+            nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
+            restoreNodeState(nodeId, editor);
+            bindNodeEvents(nodeId, editor);
+          });
+          console.log('Сохранено узлов:', Object.keys(nodesStateRef.current).length);
+        }
+
+        setTimeout(() => {
+          const nodesCount = Object.keys(editor.drawflow['Home']?.data || {}).length;
+          console.log('Узлов в редакторе после импорта:', nodesCount);
+        }, 200);
+      }, 100);  // 100мс задержка
     }
   }, [editorReady, flowData]);
 
