@@ -281,10 +281,18 @@ def check_day_filter(days: list) -> bool:
     return current_weekday in days
 
 def evaluate_condition(node: dict, input_value) -> bool:
-    """Evaluate a single condition node. input_value is the numeric/string value from data node."""
+    """
+    Evaluate a condition node.
+    If input_value is None, the condition is standalone (time/dayofweek) and
+    should be evaluated without any incoming data.
+    """
     data = node.get('data', {})
     cond_type = data.get('type', 'comparison')
+
     if cond_type == 'comparison':
+        # Without input, comparison can't be done
+        if input_value is None:
+            return False
         operator = data.get('operator', '==')
         value = data.get('value', 0)
         try:
@@ -307,6 +315,7 @@ def evaluate_condition(node: dict, input_value) -> bool:
             return is_num and input_num <= value_num
         else:
             return False
+
     elif cond_type == 'time':
         time_str = data.get('time', '')
         if not time_str:
@@ -316,22 +325,23 @@ def evaluate_condition(node: dict, input_value) -> bool:
             t = datetime.datetime.strptime(time_str, '%H:%M').time()
         except ValueError:
             return False
-        # Simple equality (can be extended)
-        return now.time() >= t
+        # Compare current time with the target (here: >= target)
+        return now.time() >= t  # customize if needed
+
     elif cond_type == 'dayofweek':
         days = data.get('days', [])
-        return check_day_filter(days)
+        if not days:
+            return True   # no filter = always true (or False? Usually all days)
+        current_weekday = datetime.datetime.now().weekday()
+        return current_weekday in days
+
     return False
+
 
 def evaluate_visual_scenario(scenario, incoming_data: dict, device_id: int, build: Build, db: Session) -> list:
     """
-    Interpret visual scenario graph correctly.
-    - Each 'data' node provides a value from incoming_data.
-    - Conditions propagate boolean results.
-    - Logic nodes combine multiple inputs via AND/OR.
-    - Action/Notification nodes fire only if input is True.
-    - Supports parallel independent branches automatically.
-    Returns list of queued commands (for logging).
+    Interpret visual scenario graph with support for standalone conditions
+    (time/dayofweek without data input).
     """
     flow_data = scenario.flow_data
     if not flow_data:
@@ -341,30 +351,41 @@ def evaluate_visual_scenario(scenario, incoming_data: dict, device_id: int, buil
     if not nodes:
         return []
     
-    # Build graph structure
     graph = build_graph(nodes)
     order = topological_sort(nodes, graph)
     if not order:
         logger.warning("Invalid graph (cycle or empty)")
         return []
     
-    # Cache for computed values
     values = {}
     queued_commands = []
     
-    # Initialize data nodes with incoming values
+    # Initialize data nodes
     for nid, node in nodes.items():
         if node.get('name') == 'data':
             field = node['data'].get('selected_field')
             values[nid] = incoming_data.get(field) if field else None
+
+    # Initialize standalone condition nodes (no predecessors)
+    for nid, node in nodes.items():
+        if node.get('name') == 'condition':
+            if not graph['incoming'].get(nid):
+                # Standalone condition – evaluate once without input
+                values[nid] = evaluate_condition(node, None)
     
     # Evaluate in topological order
     for nid in order:
         node = nodes[nid]
         node_type = node.get('name')
         if node_type == 'data':
-            continue  # already set
-        
+            continue
+        if node_type == 'condition' and nid in values:
+            # Already set as standalone, skip unless it receives input later (unlikely)
+            # But if it was set and there ARE inputs, we should recalc with the actual input
+            # However, a standalone condition should have no inputs by definition.
+            # We'll leave as is.
+            continue
+
         # Gather input values from predecessors
         input_vals = []
         for pred in graph['incoming'].get(nid, []):
@@ -378,6 +399,7 @@ def evaluate_visual_scenario(scenario, incoming_data: dict, device_id: int, buil
                 result = evaluate_condition(node, input_vals[0])
                 values[nid] = result
             else:
+                # This should not happen if we initialized standalone conditions
                 values[nid] = False
         elif node_type == 'logic':
             logic_type = node['data'].get('logic_type', 'and')
@@ -387,7 +409,6 @@ def evaluate_visual_scenario(scenario, incoming_data: dict, device_id: int, buil
                 values[nid] = any(input_vals) if input_vals else False
         elif node_type == 'action':
             if input_vals and input_vals[0] is True:
-                # Execute action
                 selected_field = node['data'].get('selected_field', '')
                 get_fields = build.get_fields or []
                 command_info = None
