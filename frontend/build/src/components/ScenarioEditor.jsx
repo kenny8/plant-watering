@@ -821,7 +821,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
 
     try {
       // 2 inputs, 1 output
-      editor.addNode('logic', 2, 1, maxX + 50, newY, 'logic', { logic_type: 'and' }, html, false);
+      editor.addNode('logic', 1, 1, maxX + 50, newY, 'logic', { logic_type: 'and' }, html, false);
       console.log('✓ Логический узел добавлен');
     } catch (error) {
       console.error('✗ Ошибка добавления логического узла:', error);
