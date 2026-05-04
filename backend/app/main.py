@@ -95,7 +95,7 @@ class ScenarioNotification(Base):
     __tablename__ = "scenario_notifications"
     id = Column(Integer, primary_key=True, index=True)
     text = Column(Text, nullable=False)
-    status = Column(String, default="pending")  # pending, sent, failed
+    status = Column(String(50), default="pending")  # pending, sent, failed
     device_id = Column(Integer, nullable=False)
     build_id = Column(Integer, nullable=False)
     scenario_id = Column(Integer, ForeignKey('scenarios.id'), index=True)
