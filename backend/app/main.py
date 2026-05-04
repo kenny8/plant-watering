@@ -222,7 +222,7 @@ JWT_SECRET = os.getenv("JWT_SECRET", "your_jwt_secret_key_here")
 ALGORITHM = "HS256"
 
 # ============================================================
-# NEW: Scenario interpreter (adapted for new node format)
+# Scenario interpreter (fixed and extended)
 # ============================================================
 
 def parse_drawflow_nodes(flow_data: dict) -> dict:
@@ -233,7 +233,7 @@ def parse_drawflow_nodes(flow_data: dict) -> dict:
 
 def build_graph(nodes: dict) -> dict:
     """
-    Build adjacency from node inputs/outputs arrays (new format).
+    Build adjacency from node outputs (supports both old and new formats).
     Returns {
         'outgoing': { node_id: [target_node_id, ...] },
         'incoming': { node_id: [source_node_id, ...] }
@@ -242,11 +242,25 @@ def build_graph(nodes: dict) -> dict:
     outgoing = {}
     incoming = {}
     for nid, node in nodes.items():
-        outputs = node.get('outputs', [])
-        outgoing[nid] = list(outputs)  # target node IDs
-        for target in outputs:
+        outputs_raw = node.get('outputs', [])
+        if isinstance(outputs_raw, dict):
+            # Old format: keys are output names, values contain connections
+            outputs = []
+            for out_name, out_data in outputs_raw.items():
+                conns = out_data.get('connections', [])
+                for conn in conns:
+                    target = conn.get('node')
+                    if target:
+                        outputs.append(target)
+        elif isinstance(outputs_raw, list):
+            # New format: flat list of target node IDs
+            outputs = outputs_raw
+        else:
+            outputs = []
+        outgoing[nid] = list(set(outputs))  # remove duplicates if any
+        for target in outgoing[nid]:
             incoming.setdefault(target, []).append(nid)
-        incoming.setdefault(nid, [])
+        incoming.setdefault(nid, [])  # ensure all nodes have at least empty list
     return {'outgoing': outgoing, 'incoming': incoming}
 
 def topological_sort(nodes: dict, graph: dict) -> list:
@@ -269,13 +283,6 @@ def topological_sort(nodes: dict, graph: dict) -> list:
         return []
     return order
 
-def check_day_filter(days: list) -> bool:
-    """Check if current weekday is in the allowed days list (0=Monday)."""
-    if not days:
-        return True  # no filter = always allow
-    current_weekday = datetime.datetime.now().weekday()
-    return current_weekday in days
-
 def evaluate_condition(node: dict, input_value) -> bool:
     """
     Evaluate a condition node.
@@ -286,7 +293,6 @@ def evaluate_condition(node: dict, input_value) -> bool:
     cond_type = data.get('type', 'comparison')
 
     if cond_type == 'comparison':
-        # Without input, comparison can't be done
         if input_value is None:
             return False
         operator = data.get('operator', '==')
@@ -321,7 +327,6 @@ def evaluate_condition(node: dict, input_value) -> bool:
             t = datetime.datetime.strptime(time_str, '%H:%M').time()
         except ValueError:
             return False
-        # Compare current time with the target (here: >= target)
         return now.time() >= t
 
     elif cond_type == 'dayofweek':
@@ -336,48 +341,47 @@ def evaluate_condition(node: dict, input_value) -> bool:
 
 def evaluate_visual_scenario(scenario, incoming_data: dict, device_id: int, build: Build, db: Session) -> list:
     """
-    Interpret visual scenario graph with the new node format (inputs/outputs arrays).
-    Supports standalone conditions (time/dayofweek) and action nodes with direct bot_parameters.
+    Interpret visual scenario graph. Supports new node format (inputs/outputs as arrays)
+    and action nodes with direct bot_parameters dict.
     """
     flow_data = scenario.flow_data
     if not flow_data:
         return []
-    
+
     nodes = parse_drawflow_nodes(flow_data)
     if not nodes:
         return []
-    
+
     graph = build_graph(nodes)
     order = topological_sort(nodes, graph)
     if not order:
-        logger.warning("Invalid graph (cycle or empty)")
+        logger.warning(f"Scenario {scenario.id}: invalid graph (cycle or empty)")
         return []
-    
+
     values = {}
     queued_commands = []
-    
+
     # Initialize data nodes
     for nid, node in nodes.items():
         if node.get('name') == 'data':
             field = node['data'].get('selected_field')
             values[nid] = incoming_data.get(field) if field else None
+            logger.debug(f"Data node {nid}: field={field}, value={values[nid]}")
 
     # Initialize standalone condition nodes (no predecessors)
     for nid, node in nodes.items():
-        if node.get('name') == 'condition':
-            if not graph['incoming'].get(nid):
-                # Standalone condition – evaluate once without input
-                values[nid] = evaluate_condition(node, None)
-    
+        if node.get('name') == 'condition' and not graph['incoming'].get(nid):
+            values[nid] = evaluate_condition(node, None)
+            logger.debug(f"Standalone condition node {nid}: result={values[nid]}")
+
     # Evaluate in topological order
     for nid in order:
         node = nodes[nid]
         node_type = node.get('name')
         if node_type == 'data':
             continue
-        if node_type == 'condition' and nid in values:
-            # Already set as standalone, skip (no input to override)
-            continue
+        if node_type == 'condition' and nid in values and not graph['incoming'].get(nid):
+            continue  # skip standalone conditions already evaluated
 
         # Gather input values from predecessors
         input_vals = []
@@ -386,29 +390,27 @@ def evaluate_visual_scenario(scenario, incoming_data: dict, device_id: int, buil
                 input_vals.append(values[pred])
             else:
                 logger.warning(f"Missing value for predecessor {pred} of {nid}")
-        
+
         if node_type == 'condition':
-            if input_vals:
-                result = evaluate_condition(node, input_vals[0])
-                values[nid] = result
-            else:
-                values[nid] = False
+            result = evaluate_condition(node, input_vals[0] if input_vals else None)
+            values[nid] = result
+            logger.debug(f"Condition node {nid}: input={input_vals}, result={result}")
         elif node_type == 'logic':
             logic_type = node['data'].get('logic_type', 'and')
             if logic_type == 'and':
                 values[nid] = all(input_vals) if input_vals else False
-            else:  # 'or'
+            else:
                 values[nid] = any(input_vals) if input_vals else False
+            logger.debug(f"Logic node {nid}: type={logic_type}, inputs={input_vals}, result={values[nid]}")
         elif node_type == 'action':
             if input_vals and input_vals[0] is True:
                 selected_field = node['data'].get('selected_field', '')
                 bot_params = node['data'].get('bot_parameters', {})
-                # Extract value from bot_parameters (simple dict like {"on": "true"})
+                # Extract command value
                 if isinstance(bot_params, dict):
-                    # Take the first value from the dict (or serialize whole)
                     command_value = str(list(bot_params.values())[0]) if bot_params else ''
                 else:
-                    command_value = str(bot_params)  # fallback
+                    command_value = str(bot_params)
                 cmd = DeviceCommand(
                     device_id=device_id,
                     command=selected_field,
@@ -429,6 +431,7 @@ def evaluate_visual_scenario(scenario, incoming_data: dict, device_id: int, buil
                     build_id=build.id
                 )
                 db.add(notif)
+                logger.info(f"Action triggered: {selected_field} <- {command_value}")
         elif node_type == 'notification':
             if input_vals and input_vals[0] is True:
                 message = node['data'].get('message', '')
@@ -439,10 +442,11 @@ def evaluate_visual_scenario(scenario, incoming_data: dict, device_id: int, buil
                     build_id=build.id
                 )
                 db.add(notif)
-                logger.info(f"Notification for scenario {scenario.id}: {message}")
-    
+                logger.info(f"Notification: {message}")
+
     if queued_commands:
         db.commit()
+        logger.info(f"Scenario {scenario.id}: {len(queued_commands)} command(s) queued")
     return queued_commands
 
 def evaluate_device_scenarios(db: Session, device_id: int, incoming_data: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -453,48 +457,41 @@ def evaluate_device_scenarios(db: Session, device_id: int, incoming_data: Dict[s
         if not device:
             logger.warning(f'Device {device_id} not found')
             return []
-        
+
         build = db.query(Build).filter(Build.id == device.build_id).first()
         if not build:
             logger.warning(f'Build {device.build_id} not found')
             return []
-        
+
         active_scenarios = db.query(Scenario).filter(
             Scenario.build_id == device.build_id,
             Scenario.is_active == True
         ).all()
-        
+        logger.info(f"Evaluating {len(active_scenarios)} active scenarios for device {device_id}")
+
         for scenario in active_scenarios:
-            device_setting = db.query(DeviceScenarioSetting).filter(
+            # Check if scenario is enabled for this specific device
+            setting = db.query(DeviceScenarioSetting).filter(
                 DeviceScenarioSetting.device_id == device_id,
                 DeviceScenarioSetting.scenario_id == scenario.id
             ).first()
-            if device_setting and not device_setting.is_enabled:
+            if setting and not setting.is_enabled:
+                logger.info(f"Scenario {scenario.id} disabled for device, skipping")
                 continue
+
             commands = evaluate_visual_scenario(scenario, incoming_data, device_id, build, db)
             queued_commands.extend(commands)
-        
+
         if queued_commands:
             logger.info(f'Total {len(queued_commands)} commands queued for device {device_id}')
     except Exception as e:
-        logger.error(f'Error evaluating scenarios: {e}')
+        logger.error(f'Error evaluating scenarios: {e}', exc_info=True)
         db.rollback()
     return queued_commands
 
-async def _evaluate_scenarios_async(db: Session, device_id: int, incoming_data: Dict[str, Any]):
-    """Async wrapper that creates its own DB session."""
-    try:
-        async_db = SessionLocal()
-        try:
-            result = evaluate_device_scenarios(async_db, device_id, incoming_data)
-            logger.info(f"Async scenario evaluation completed for device {device_id}: {len(result)} commands queued")
-        finally:
-            async_db.close()
-    except Exception as e:
-        logger.error(f"Error in async scenario evaluation for device {device_id}: {e}")
 
 # ============================================================
-# Original endpoints (unchanged except for the scenario eval call)
+# Original endpoints (modified: synchronous scenario evaluation)
 # ============================================================
 
 async def get_or_create_device(machine_name: str, device_id: int, db: Session, human_name: str = None):
@@ -518,6 +515,7 @@ async def get_or_create_device(machine_name: str, device_id: int, db: Session, h
             db.add(device)
             db.commit()
             db.refresh(device)
+            # Create scenario settings for all scenarios of this build
             scenarios = db.query(Scenario).filter(Scenario.build_id == build.id).all()
             for scenario in scenarios:
                 setting = DeviceScenarioSetting(
@@ -547,17 +545,21 @@ async def device_post_endpoint(machine_name: str, device_id: int, request: Reque
         data = await request.json()
     except Exception:
         return {"error": "Invalid JSON"}
-    
+
     try:
         human_name = data.get('human_name')
         device = await get_or_create_device(machine_name, device_id, db, human_name)
         build = db.query(Build).filter(Build.machine_name == machine_name).first()
         if not build:
             return {"error": "Build not found"}
+
+        # Validate required fields
         for field in build.post_fields:
             field_name = field.get('machine_name')
             if field_name and field_name not in data and field_name != 'human_name':
                 return {"error": f"Missing field: {field_name}"}
+
+        # Save data records
         for field_name, field_value in data.items():
             if field_name != 'human_name':
                 record = DeviceDataRecord(
@@ -569,8 +571,11 @@ async def device_post_endpoint(machine_name: str, device_id: int, request: Reque
                 )
                 db.add(record)
         db.commit()
-        # Launch async evaluation
-        asyncio.create_task(_evaluate_scenarios_async(db, device_id, data))
+
+        # Synchronously evaluate scenarios (immediately after data commit)
+        logger.info("Starting scenario evaluation synchronously...")
+        evaluate_device_scenarios(db, device_id, data)
+
         return {
             "status": "success",
             "message": f"Data received for device {device_id}",
@@ -602,6 +607,7 @@ async def device_get_endpoint(machine_name: str, device_id: int, db: Session = D
             cmd.is_executed = True
         if commands:
             db.commit()
+            logger.info(f"Returning {len(commands)} commands for device {device_id}")
         return result
     except HTTPException as he:
         return {"error": he.detail}
@@ -663,7 +669,6 @@ async def debug_builds(db: Session = Depends(get_db)):
         ]
     }
 
-
 @app.delete("/api/builds/{id}")
 async def delete_build(id: int, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
     build = db.query(Build).filter(Build.id == id).first()
@@ -672,7 +677,7 @@ async def delete_build(id: int, db: Session = Depends(get_db), token: str = Depe
     db.delete(build)
     db.commit()
     return {"status": "deleted"}
-    
+
 @app.get("/api/builds/{id}")
 async def get_build(id: int, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
     build = db.query(Build).filter(Build.id == id).first()
@@ -685,12 +690,10 @@ async def update_build(id: int, build_data: BuildCreate, db: Session = Depends(g
     build = db.query(Build).filter(Build.id == id).first()
     if not build:
         raise HTTPException(status_code=404, detail="Build not found")
-    
     build.human_name = build_data.human_name
     build.machine_name = build_data.machine_name
     build.post_fields = build_data.post_fields
     build.get_fields = build_data.get_fields
-    
     db.commit()
     db.refresh(build)
     return build
@@ -717,7 +720,6 @@ async def health():
 
 @app.get("/api/devices/{device_id}")
 async def get_device(device_id: int, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
-    """Получить устройство по ID"""
     device = db.query(Device).filter(Device.id == device_id).first()
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
@@ -726,103 +728,59 @@ async def get_device(device_id: int, db: Session = Depends(get_db), token: str =
 @app.delete("/api/devices/{device_id}")
 async def delete_device(device_id: int, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
     try:
-        print(f"Deleting device {device_id}")
-        
-        # Находим все устройства с этим ID
         devices = db.query(Device).filter(Device.id == device_id).all()
         if not devices:
-            print(f"Device {device_id} not found")
             raise HTTPException(status_code=404, detail="Device not found")
-        
         total_deleted_data = 0
-        
-        # Удаляем все устройства с этим ID и их данные
         for device in devices:
-            print(f"Found device: {device.id}, build_id: {device.build_id}")
-            
-            # ИСПРАВЛЕНО: используем переименованную модель DeviceDataRecord
             data_to_delete = db.query(DeviceDataRecord).filter(
                 DeviceDataRecord.device_id == device_id,
                 DeviceDataRecord.build_id == device.build_id
             )
             deleted_data_count = data_to_delete.count()
             data_to_delete.delete(synchronize_session=False)
-            
             total_deleted_data += deleted_data_count
-            print(f"Deleted {deleted_data_count} data records for build {device.build_id}")
-            
-            # Удаляем само устройство
             db.delete(device)
-        
         db.commit()
-        print(f"Device {device_id} deleted successfully. Total data records deleted: {total_deleted_data}")
         return {"status": "deleted", "message": f"Device {device_id} and {total_deleted_data} data records deleted"}
-        
     except Exception as e:
-        print(f"Error deleting device {device_id}: {e}")
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error deleting device: {str(e)}")
-        
+
 @app.get("/api/devices/{device_id}/data")
-async def get_device_data(
-    device_id: int, 
-    db: Session = Depends(get_db), 
-    token: str = Depends(oauth2_scheme),
-    limit: int = None  # Добавляем опциональный параметр лимита
-):
-    """Получает все данные для конкретного устройства"""
+async def get_device_data(device_id: int, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme), limit: int = None):
     try:
-        # Создаем базовый запрос
-        query = db.query(DeviceDataRecord).filter(
-            DeviceDataRecord.device_id == device_id
-        )
-        
-        # Если limit не указан, получаем все записи
+        query = db.query(DeviceDataRecord).filter(DeviceDataRecord.device_id == device_id)
         if limit:
             query = query.limit(limit)
-        
         device_data = query.all()
-        
-        print(f"Found {len(device_data)} records for device {device_id}")  # Для отладки
-        
-        # Группируем данные по времени создания
         data_by_time = {}
         for record in device_data:
             if record.created_at not in data_by_time:
                 data_by_time[record.created_at] = {}
             data_by_time[record.created_at][record.field_name] = record.field_value
-        
         return {
             "device_id": device_id,
             "total_records": len(device_data),
             "data": data_by_time
         }
-        
     except Exception as e:
-        print(f"Error getting device data: {e}")
         raise HTTPException(status_code=500, detail=f"Error getting device data: {str(e)}")
 
 
-# API роуты для сценариев
+# Scenario API routes (unchanged except table name references in model already updated)
 @app.get("/api/scenarios", response_model=list[ScenarioResponse])
 async def get_scenarios(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
-    """Получить все сценарии"""
     return db.query(Scenario).all()
-
 
 @app.post("/api/scenarios", response_model=ScenarioResponse)
 async def create_scenario(scenario: ScenarioCreate, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
-    """Создать новый сценарий"""
-    # Проверяем существование сборки
     build = db.query(Build).filter(Build.id == scenario.build_id).first()
     if not build:
         raise HTTPException(status_code=404, detail="Build not found")
-    
-    # Проверяем уникальность machine_name
     existing = db.query(Scenario).filter(Scenario.machine_name == scenario.machine_name).first()
     if existing:
         raise HTTPException(status_code=400, detail="Scenario with this machine_name already exists")
-    
     db_scenario = Scenario(
         human_name=scenario.human_name,
         machine_name=scenario.machine_name,
@@ -833,180 +791,102 @@ async def create_scenario(scenario: ScenarioCreate, db: Session = Depends(get_db
     db.add(db_scenario)
     db.commit()
     db.refresh(db_scenario)
-    
-    # Автоматически создаем записи в device_scenario_settings для всех устройств этой сборки
     devices = db.query(Device).filter(Device.build_id == scenario.build_id).all()
     for device in devices:
-        setting = DeviceScenarioSetting(
-            device_id=device.id,
-            scenario_id=db_scenario.id,
-            is_enabled=True
-        )
+        setting = DeviceScenarioSetting(device_id=device.id, scenario_id=db_scenario.id, is_enabled=True)
         db.add(setting)
     db.commit()
-    
     return db_scenario
-
 
 @app.put("/api/scenarios/{id}", response_model=ScenarioResponse)
 async def update_scenario(id: int, scenario: ScenarioUpdate, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
-    """Обновить существующий сценарий"""
     db_scenario = db.query(Scenario).filter(Scenario.id == id).first()
     if not db_scenario:
         raise HTTPException(status_code=404, detail="Scenario not found")
-    
-    # Проверяем уникальность machine_name если он меняется
     if scenario.machine_name and scenario.machine_name != db_scenario.machine_name:
-        existing = db.query(Scenario).filter(
-            Scenario.machine_name == scenario.machine_name,
-            Scenario.id != id
-        ).first()
+        existing = db.query(Scenario).filter(Scenario.machine_name == scenario.machine_name, Scenario.id != id).first()
         if existing:
             raise HTTPException(status_code=400, detail="Scenario with this machine_name already exists")
-    
-    # Обновляем поля
-    if scenario.human_name is not None:
-        db_scenario.human_name = scenario.human_name
-    if scenario.machine_name is not None:
-        db_scenario.machine_name = scenario.machine_name
-    if scenario.flow_data is not None:
-        db_scenario.flow_data = scenario.flow_data
-    if scenario.is_active is not None:
-        db_scenario.is_active = scenario.is_active
-    
+    if scenario.human_name is not None: db_scenario.human_name = scenario.human_name
+    if scenario.machine_name is not None: db_scenario.machine_name = scenario.machine_name
+    if scenario.flow_data is not None: db_scenario.flow_data = scenario.flow_data
+    if scenario.is_active is not None: db_scenario.is_active = scenario.is_active
     db.commit()
     db.refresh(db_scenario)
-    
-    # Если изменилась сборка, обновляем device_scenario_settings
     if scenario.build_id is not None and scenario.build_id != db_scenario.build_id:
-        # Удаляем старые записи для этого сценария
-        db.query(DeviceScenarioSetting).filter(
-            DeviceScenarioSetting.scenario_id == db_scenario.id
-        ).delete(synchronize_session=False)
-        
-        # Создаем новые записи для устройств новой сборки
+        db.query(DeviceScenarioSetting).filter(DeviceScenarioSetting.scenario_id == db_scenario.id).delete(synchronize_session=False)
         devices = db.query(Device).filter(Device.build_id == scenario.build_id).all()
         for device in devices:
-            setting = DeviceScenarioSetting(
-                device_id=device.id,
-                scenario_id=db_scenario.id,
-                is_enabled=True
-            )
+            setting = DeviceScenarioSetting(device_id=device.id, scenario_id=db_scenario.id, is_enabled=True)
             db.add(setting)
         db.commit()
-    
     return db_scenario
-
 
 @app.get("/api/scenarios/{id}", response_model=ScenarioResponse)
 async def get_scenario(id: int, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
-    """Получить сценарий по ID"""
     scenario = db.query(Scenario).filter(Scenario.id == id).first()
     if not scenario:
         raise HTTPException(status_code=404, detail="Scenario not found")
     return scenario
 
-
 @app.delete("/api/scenarios/{id}", response_model=dict)
 async def delete_scenario(id: int, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
-    """Удалить сценарий"""
     scenario = db.query(Scenario).filter(Scenario.id == id).first()
     if not scenario:
         raise HTTPException(status_code=404, detail="Scenario not found")
-    
-
-    # Сначала удаляем все записи в device_scenario_settings для этого сценария
-    db.query(DeviceScenarioSetting).filter(
-        DeviceScenarioSetting.scenario_id == id
-    ).delete(synchronize_session=False)
+    db.query(DeviceScenarioSetting).filter(DeviceScenarioSetting.scenario_id == id).delete(synchronize_session=False)
     db.delete(scenario)
     db.commit()
     return {"message": "Scenario deleted"}
 
-
 @app.patch("/api/scenarios/{id}/toggle", response_model=ScenarioResponse)
 async def toggle_scenario(id: int, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
-    """Инвертировать статус is_active у сценария"""
     scenario = db.query(Scenario).filter(Scenario.id == id).first()
     if not scenario:
         raise HTTPException(status_code=404, detail="Scenario not found")
-    
     scenario.is_active = not scenario.is_active
     db.commit()
     db.refresh(scenario)
     return scenario
 
-
-# API роуты для управления настройками сценариев на устройствах
 @app.get("/api/devices/{device_id}/scenarios", response_model=list[DeviceScenarioSettingResponse])
 async def get_device_scenarios(device_id: int, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
-    """Получить все настройки сценариев для конкретного устройства"""
-    # Получаем устройство чтобы узнать его build_id
     device = db.query(Device).filter(Device.id == device_id).first()
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
-    
-    # Получаем все сценарии для этой сборки
     scenarios = db.query(Scenario).filter(Scenario.build_id == device.build_id).all()
-    
-    # Для каждого сценария получаем или создаем настройку для устройства
     result = []
     for scenario in scenarios:
         setting = db.query(DeviceScenarioSetting).filter(
             DeviceScenarioSetting.device_id == device_id,
             DeviceScenarioSetting.scenario_id == scenario.id
         ).first()
-        
-        # Если настройки нет, создаем её (по умолчанию включено)
         if not setting:
-            setting = DeviceScenarioSetting(
-                device_id=device_id,
-                scenario_id=scenario.id,
-                is_enabled=True
-            )
+            setting = DeviceScenarioSetting(device_id=device_id, scenario_id=scenario.id, is_enabled=True)
             db.add(setting)
             db.commit()
             db.refresh(setting)
-        
         result.append(setting)
-    
     return result
-
 
 @app.patch("/api/devices/{device_id}/scenarios/{scenario_id}/toggle", response_model=DeviceScenarioSettingResponse)
 async def toggle_device_scenario(device_id: int, scenario_id: int, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
-    """Инвертировать статус is_enabled для сценария на конкретном устройстве"""
-    # Проверяем существование устройства
     device = db.query(Device).filter(Device.id == device_id).first()
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
-    
-    # Проверяем существование сценария
     scenario = db.query(Scenario).filter(Scenario.id == scenario_id).first()
     if not scenario:
         raise HTTPException(status_code=404, detail="Scenario not found")
-    
-    # Проверяем что сценарий принадлежит той же сборке что и устройство
     if scenario.build_id != device.build_id:
         raise HTTPException(status_code=400, detail="Scenario does not belong to device's build")
-    
-    # Получаем или создаем настройку
     setting = db.query(DeviceScenarioSetting).filter(
         DeviceScenarioSetting.device_id == device_id,
         DeviceScenarioSetting.scenario_id == scenario_id
     ).first()
-    
     if not setting:
-        setting = DeviceScenarioSetting(
-            device_id=device_id,
-            scenario_id=scenario_id,
-            is_enabled=True
-        )
+        setting = DeviceScenarioSetting(device_id=device_id, scenario_id=scenario_id, is_enabled=True)
         db.add(setting)
-    
-    # Инвертируем статус
     setting.is_enabled = not setting.is_enabled
     db.commit()
     db.refresh(setting)
-    
     return setting
