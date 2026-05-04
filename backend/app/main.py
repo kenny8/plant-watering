@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends
+﻿from fastapi import FastAPI, HTTPException, Depends
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel, field_validator
 import json
@@ -1108,3 +1108,4 @@ async def toggle_device_scenario(device_id: int, scenario_id: int, db: Session =
     db.refresh(setting)
     
     return setting
+
