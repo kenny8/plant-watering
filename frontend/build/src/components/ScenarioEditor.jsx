@@ -1,4 +1,4 @@
-console.log('Загрузка ScenarioEditor.jsx (fixed v3)');
+console.log('Загрузка ScenarioEditor.jsx (fixed v4)');
 
 if (!window.React || !window.axios) {
   console.error('ScenarioEditor.jsx: React или axios не загружены');
@@ -113,40 +113,45 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
         }
       }
 
-      // Импортируем
-      editor.import(importData);
+      try {
+        // Импортируем
+        editor.import(importData);
 
-      // Исправляем структуру: иногда import добавляет лишний уровень drawflow.drawflow
-      if (editor.drawflow && editor.drawflow.drawflow) {
-        console.log('[ИМПОРТ] Обнаружена вложенная структура drawflow, извлекаем');
-        editor.drawflow = editor.drawflow.drawflow;
+        // Исправляем структуру: иногда import добавляет лишний уровень drawflow.drawflow
+        if (editor.drawflow && editor.drawflow.drawflow) {
+          console.log('[ИМПОРТ] Обнаружена вложенная структура drawflow, извлекаем');
+          editor.drawflow = editor.drawflow.drawflow;
+        }
+
+        console.log('✓ Flow data импортирован');
+        console.log('[ИМПОРТ] editor.drawflow:', editor.drawflow);
+        console.log('[ИМПОРТ] editor.drawflow.Home:', editor.drawflow['Home']);
+        console.log('[ИМПОРТ] currentBuildDataRef:', window.currentBuildDataRef);
+        console.log('[ИМПОРТ] build.get_fields:', window.currentBuildDataRef?.get_fields);
+
+        const moduleData = editor.drawflow['Home'];
+        if (moduleData && moduleData.data) {
+          Object.keys(moduleData.data).forEach(nodeId => {
+            nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
+            // Сначала привязываем события
+            bindNodeEvents(nodeId, editor);
+            // Затем восстанавливаем состояние (с повторными попытками)
+            restoreNodeState(nodeId, editor);
+          });
+          console.log('Сохранено узлов:', Object.keys(nodesStateRef.current).length);
+        } else {
+          console.error('[ИМПОРТ] Модуль Home или его data не найдены после импорта');
+        }
+
+        // Для диагностики
+        setTimeout(() => {
+          const nodesCount = Object.keys(editor.drawflow['Home']?.data || {}).length;
+          console.log('Узлов в редакторе после импорта:', nodesCount);
+        }, 500);
+      } catch (error) {
+        console.error('[ИМПОРТ] Ошибка импорта flow_data:', error);
+        alert('Не удалось загрузить визуальный редактор. Возможно, данные повреждены.');
       }
-
-      console.log('✓ Flow data импортирован');
-      console.log('[ИМПОРТ] editor.drawflow:', editor.drawflow);
-      console.log('[ИМПОРТ] editor.drawflow.Home:', editor.drawflow['Home']);
-      console.log('[ИМПОРТ] currentBuildDataRef:', window.currentBuildDataRef);
-      console.log('[ИМПОРТ] build.get_fields:', window.currentBuildDataRef?.get_fields);
-
-      const moduleData = editor.drawflow['Home'];
-      if (moduleData && moduleData.data) {
-        Object.keys(moduleData.data).forEach(nodeId => {
-          nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
-          // Сначала привязываем события
-          bindNodeEvents(nodeId, editor);
-          // Затем восстанавливаем состояние (с повторными попытками)
-          restoreNodeState(nodeId, editor);
-        });
-        console.log('Сохранено узлов:', Object.keys(nodesStateRef.current).length);
-      } else {
-        console.error('[ИМПОРТ] Модуль Home или его data не найдены после импорта');
-      }
-
-      // Для диагностики
-      setTimeout(() => {
-        const nodesCount = Object.keys(editor.drawflow['Home']?.data || {}).length;
-        console.log('Узлов в редакторе после импорта:', nodesCount);
-      }, 500);
     }
   }, [editorReady, flowData, window.currentBuildDataRef]);
 
@@ -171,13 +176,16 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
       return;
     }
 
-    const selectedField = nodeData.data?.selected_field;
-    const conditionType = nodeData.data?.condition_type || 'comparison';
+    const data = nodeData.data || {};
+    const selectedField = data.selected_field;
+    const conditionType = data.type || 'comparison'; // здесь ключ 'type'
 
     // Восстановление data node select
     const dataSelect = nodeElement.querySelector('.data-field-select');
     if (dataSelect && selectedField) {
       dataSelect.value = selectedField;
+      // Обновим данные
+      data.selected_field = selectedField;
       const changeEvent = new Event('change', { bubbles: true });
       dataSelect.dispatchEvent(changeEvent);
       console.log(`[Восстановление] Data node ${nodeId}: selected field = ${selectedField}`);
@@ -187,14 +195,15 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     const actionSelect = nodeElement.querySelector('.action-field-select');
     if (actionSelect && selectedField) {
       actionSelect.value = selectedField;
-      const botParameters = nodeData.data?.bot_parameters || {};
+      data.selected_field = selectedField;
+      const botParameters = data.bot_parameters || {};
       renderBotParameters(nodeId, editor, selectedField, botParameters);
       console.log(`[Восстановление] Action node ${nodeId}: selected field = ${selectedField}`, botParameters);
       const changeEvent = new Event('change', { bubbles: true });
       actionSelect.dispatchEvent(changeEvent);
     }
 
-    // Восстановление condition type + sections
+    // Восстановление condition type + sections + данные
     const conditionSelect = nodeElement.querySelector('.condition-type-select');
     if (conditionSelect) {
       const compSection = nodeElement.querySelector('.condition-comparison-section');
@@ -203,6 +212,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
 
       if (compSection && timeSection && daySection) {
         conditionSelect.value = conditionType;
+        data.type = conditionType; // обновляем
         const changeEvent = new Event('change', { bubbles: true });
         conditionSelect.dispatchEvent(changeEvent);
         
@@ -210,37 +220,44 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
         timeSection.style.display = 'none';
         daySection.style.display = 'none';
 
-        if (conditionType === 'comparison') compSection.style.display = 'block';
-        else if (conditionType === 'time') timeSection.style.display = 'block';
-        else if (conditionType === 'dayofweek') daySection.style.display = 'block';
+        if (conditionType === 'comparison') {
+          compSection.style.display = 'block';
+          // Оператор и значение
+          const operatorSelect = compSection.querySelector('.condition-operator');
+          const valueInput = compSection.querySelector('.condition-value');
+          if (operatorSelect) {
+            operatorSelect.value = data.operator || '>';
+            data.operator = operatorSelect.value;
+          }
+          if (valueInput) {
+            valueInput.value = data.value || 0;
+            data.value = valueInput.value;
+          }
+        } else if (conditionType === 'time') {
+          timeSection.style.display = 'block';
+          const timeInput = timeSection.querySelector('.time-input');
+          if (timeInput) {
+            timeInput.value = data.time || '';
+            data.time = timeInput.value;
+          }
+        } else if (conditionType === 'dayofweek') {
+          daySection.style.display = 'block';
+          const days = data.days || [];
+          const dayCheckboxes = daySection.querySelectorAll('.day-checkbox');
+          dayCheckboxes.forEach(cb => {
+            const day = parseInt(cb.getAttribute('data-day'));
+            cb.checked = days.includes(day);
+          });
+          data.days = Array.from(dayCheckboxes)
+                         .filter(cb => cb.checked)
+                         .map(cb => parseInt(cb.getAttribute('data-day')));
+        }
+        console.log(`[Восстановление] Condition node ${nodeId}: condition type = ${conditionType}`);
       }
-      
-      // Восстановление значений condition
-      if (conditionType === 'comparison') {
-        const operator = nodeData.data?.operator || '>';
-        const value = nodeData.data?.value || 0;
-        const operatorSelect = compSection?.querySelector('.condition-operator');
-        const valueInput = compSection?.querySelector('.condition-value');
-        if (operatorSelect) operatorSelect.value = operator;
-        if (valueInput) valueInput.value = value;
-      } else if (conditionType === 'time') {
-        const time = nodeData.data?.time || '';
-        const timeInput = timeSection?.querySelector('.time-input');
-        if (timeInput) timeInput.value = time;
-      } else if (conditionType === 'dayofweek') {
-        const days = nodeData.data?.days || [];
-        const dayCheckboxes = daySection?.querySelectorAll('.day-checkbox');
-        dayCheckboxes?.forEach(cb => {
-          const day = parseInt(cb.getAttribute('data-day'));
-          cb.checked = days.includes(day);
-        });
-      }
-      console.log(`[Восстановление] Condition node ${nodeId}: condition type = ${conditionType}`);
     }
   };
 
-
-  // Единая функция отрисовки параметров бота для action node
+  // Единая функция отрисовки параметров бота для action node (с радио-поведением)
   const renderBotParameters = (nodeId, editor, selectedField, botParameters = {}) => {
     console.log('[renderBotParameters] Called with:', {
       nodeId,
@@ -275,27 +292,36 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
         const paramHumanName = param.human_name || param.name || `Параметр ${idx + 1}`;
         const paramMachineName = param.machine_name || `param_${idx}`;
         const paramResult = param.result || '';
+        // Выбран, если ключ присутствует в botParameters
         const isChecked = botParameters[paramMachineName] !== undefined;
 
+        // Используем чекбоксы, но с логикой "только один"
         const checkboxHTML = `<label class="flex items-center space-x-2 text-xs"><input type="checkbox" class="form-checkbox bot-param-check" data-param-name="${paramMachineName}" data-param-result="${paramResult}" ${isChecked ? 'checked' : ''} /><span>${paramHumanName}</span></label>`;
         paramsList.insertAdjacentHTML('beforeend', checkboxHTML);
       });
       paramsContainer.style.display = 'block';
 
-      // Добавляем обработчики для чекбоксов
-      paramsList.querySelectorAll('.bot-param-check').forEach(cb => {
+      // Обработчики с единственным выбором
+      const checkboxes = paramsList.querySelectorAll('.bot-param-check');
+      checkboxes.forEach(cb => {
         cb.addEventListener('change', (e) => {
-          const paramName = e.target.getAttribute('data-param-name');
-          const paramResult = e.target.getAttribute('data-param-result');
-          const isChecked = e.target.checked;
+          const clicked = e.target;
+          const paramName = clicked.getAttribute('data-param-name');
+          const paramResult = clicked.getAttribute('data-param-result');
 
+          // Если включаем, снимаем все остальные
+          if (clicked.checked) {
+            checkboxes.forEach(other => {
+              if (other !== clicked) other.checked = false;
+            });
+          }
+
+          // Обновляем данные узла
           const moduleData = editor.drawflow[editor.module];
           if (moduleData && moduleData.data[nodeId]) {
-            const currentParams = moduleData.data[nodeId].data.bot_parameters || {};
-            if (isChecked) {
+            const currentParams = {};
+            if (clicked.checked) {
               currentParams[paramName] = paramResult;
-            } else {
-              delete currentParams[paramName];
             }
             moduleData.data[nodeId].data.bot_parameters = currentParams;
             nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
@@ -333,10 +359,10 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
           const moduleData = editor.drawflow[editor.module];
           if (moduleData && moduleData.data[nodeId]) {
             moduleData.data[nodeId].data.selected_field = selectedValue;
-            moduleData.data[nodeId].data.bot_parameters = moduleData.data[nodeId].data.bot_parameters || {};
+            moduleData.data[nodeId].data.bot_parameters = {};
             nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
             // Перерисовываем параметры бота
-            renderBotParameters(nodeId, editor, selectedValue, moduleData.data[nodeId].data.bot_parameters);
+            renderBotParameters(nodeId, editor, selectedValue, {});
           }
         });
       }
@@ -358,7 +384,45 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
             if (type === 'comparison') compSection.style.display = 'block';
             else if (type === 'time') timeSection.style.display = 'block';
             else if (type === 'dayofweek') daySection.style.display = 'block';
+
+            // Сохраняем тип в данные узла
+            const moduleData = editor.drawflow[editor.module];
+            if (moduleData && moduleData.data[nodeId]) {
+              moduleData.data[nodeId].data.type = type;
+              nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
+            }
           });
+        }
+
+        // Дополнительные обработчики для полей условия, чтобы сохранять значения
+        const operatorSelect = compSection?.querySelector('.condition-operator');
+        const valueInput = compSection?.querySelector('.condition-value');
+        const timeInput = timeSection?.querySelector('.time-input');
+        const dayCheckboxes = daySection?.querySelectorAll('.day-checkbox');
+
+        const updateConditionData = () => {
+          const moduleData = editor.drawflow[editor.module];
+          if (!moduleData || !moduleData.data[nodeId]) return;
+          const data = moduleData.data[nodeId].data;
+          const type = data.type || 'comparison';
+          if (type === 'comparison') {
+            data.operator = operatorSelect?.value || '>';
+            data.value = valueInput?.value || 0;
+          } else if (type === 'time') {
+            data.time = timeInput?.value || '';
+          } else if (type === 'dayofweek') {
+            data.days = Array.from(dayCheckboxes)
+                              .filter(cb => cb.checked)
+                              .map(cb => parseInt(cb.getAttribute('data-day')));
+          }
+          nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
+        };
+
+        if (operatorSelect) operatorSelect.addEventListener('change', updateConditionData);
+        if (valueInput) valueInput.addEventListener('input', updateConditionData);
+        if (timeInput) timeInput.addEventListener('change', updateConditionData);
+        if (dayCheckboxes.length > 0) {
+          dayCheckboxes.forEach(cb => cb.addEventListener('change', updateConditionData));
         }
       }
     }, 100);
@@ -393,7 +457,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
       setHasSelectedBuild(true);
     } catch (error) {
       console.error('Ошибка загрузки данных сборки:', error);
-      throw error; // Пробрасываем, чтобы вызывающий код знал об ошибке
+      throw error;
     }
   };
 
@@ -464,10 +528,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
   };
 
   const addActionNode = () => {
-    if (!editorRef.current) {
-      console.error('Ошибка: редактор не инициализирован!');
-      return;
-    }
+    if (!editorRef.current) return;
 
     const editor = editorRef.current;
     editor.changeModule('Home');
@@ -541,10 +602,10 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
               const moduleData = editor.drawflow[editor.module];
               if (moduleData && moduleData.data[nodeId]) {
                 moduleData.data[nodeId].data.selected_field = selectedValue;
+                moduleData.data[nodeId].data.bot_parameters = {};
                 nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
               }
-
-              renderBotParameters(nodeId, editor, selectedValue, moduleData.data[nodeId].data.bot_parameters || {});
+              renderBotParameters(nodeId, editor, selectedValue, {});
             };
 
             actionSelect.addEventListener('change', updateParams);
@@ -557,10 +618,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
   };
 
   const addConditionNode = () => {
-    if (!editorRef.current) {
-      console.error('Ошибка: редактор не инициализирован!');
-      return;
-    }
+    if (!editorRef.current) return;
 
     const editor = editorRef.current;
     editor.changeModule('Home');
@@ -639,20 +697,15 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     `;
 
     try {
-      editor.addNode('condition', 1, 1, maxX + 50, newY, 'condition', { type: 'comparison', operator: '>', value: 0, time: '', days: [] }, html, false);
+      const nodeId = editor.addNode('condition', 1, 1, maxX + 50, newY, 'condition', { type: 'comparison', operator: '>', value: 0, time: '', days: [] }, html, false);
 
       setTimeout(() => {
-        const allNodes = document.querySelectorAll('[id^="node-"]');
-        let targetNode = null;
-        allNodes.forEach(node => {
-          if (node.querySelector('.condition-type-select')) targetNode = node;
-        });
-
-        if (targetNode) {
-          const typeSelect = targetNode.querySelector('.condition-type-select');
-          const compSection = targetNode.querySelector('.condition-comparison-section');
-          const timeSection = targetNode.querySelector('.condition-time-section');
-          const daySection = targetNode.querySelector('.condition-dayofweek-section');
+        const nodeElement = document.querySelector(`[id^="node-${nodeId}"]`);
+        if (nodeElement) {
+          const typeSelect = nodeElement.querySelector('.condition-type-select');
+          const compSection = nodeElement.querySelector('.condition-comparison-section');
+          const timeSection = nodeElement.querySelector('.condition-time-section');
+          const daySection = nodeElement.querySelector('.condition-dayofweek-section');
 
           if (typeSelect && compSection && timeSection && daySection) {
             typeSelect.addEventListener('change', (e) => {
@@ -660,11 +713,47 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
               compSection.style.display = 'none';
               timeSection.style.display = 'none';
               daySection.style.display = 'none';
-
               if (type === 'comparison') compSection.style.display = 'block';
               else if (type === 'time') timeSection.style.display = 'block';
               else if (type === 'dayofweek') daySection.style.display = 'block';
+
+              const moduleData = editor.drawflow[editor.module];
+              if (moduleData && moduleData.data[nodeId]) {
+                moduleData.data[nodeId].data.type = type;
+                nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
+              }
             });
+          }
+
+          // Обработчики для полей условий, сохраняющие данные
+          const operatorSelect = compSection?.querySelector('.condition-operator');
+          const valueInput = compSection?.querySelector('.condition-value');
+          const timeInput = timeSection?.querySelector('.time-input');
+          const dayCheckboxes = daySection?.querySelectorAll('.day-checkbox');
+
+          const updateConditionData = () => {
+            const moduleData = editor.drawflow[editor.module];
+            if (!moduleData || !moduleData.data[nodeId]) return;
+            const data = moduleData.data[nodeId].data;
+            const type = data.type || 'comparison';
+            if (type === 'comparison') {
+              data.operator = operatorSelect?.value || '>';
+              data.value = valueInput?.value || 0;
+            } else if (type === 'time') {
+              data.time = timeInput?.value || '';
+            } else if (type === 'dayofweek') {
+              data.days = Array.from(dayCheckboxes)
+                                .filter(cb => cb.checked)
+                                .map(cb => parseInt(cb.getAttribute('data-day')));
+            }
+            nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
+          };
+
+          if (operatorSelect) operatorSelect.addEventListener('change', updateConditionData);
+          if (valueInput) valueInput.addEventListener('input', updateConditionData);
+          if (timeInput) timeInput.addEventListener('change', updateConditionData);
+          if (dayCheckboxes.length > 0) {
+            dayCheckboxes.forEach(cb => cb.addEventListener('change', updateConditionData));
           }
         }
       }, 100);
@@ -679,7 +768,6 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     setSaving(true);
     try {
       const token = localStorage.getItem('token');
-      // Убедимся, что экспорт всегда содержит обёртку drawflow
       const exportedData = editorRef.current.export();
       if (!exportedData || typeof exportedData !== 'object') {
         alert('Ошибка экспорта данных редактора');
@@ -744,7 +832,6 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
       setSelectedBuildId(scenario.build_id || '');
       setIsActive(scenario.is_active !== undefined ? scenario.is_active : true);
 
-      // Парсим flow_data
       let parsedFlowData = scenario.flow_data;
       if (typeof scenario.flow_data === 'string') {
         try {
@@ -755,13 +842,11 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
         }
       }
 
-      // Загружаем сборку перед тем, как устанавливать flowData
       if (scenario.build_id) {
         window.currentBuildDataRef = null;
         setCurrentBuildData(null);
         try {
           await loadBuildDataForReference(scenario.build_id);
-          // После успешной загрузки сборки устанавливаем flowData
           setFlowData(parsedFlowData);
           setHasSelectedBuild(true);
         } catch (err) {
@@ -782,231 +867,95 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
   };
 
   if (loading) {
-    return React.createElement(
-      'div',
-      { className: 'container mx-auto p-6' },
+    return React.createElement('div', { className: 'container mx-auto p-6' },
       React.createElement('div', { className: 'text-xl' }, 'Загрузка...')
     );
   }
 
-  return React.createElement(
-    'div',
-    { className: 'container mx-auto p-6' },
-    React.createElement(
-      'div',
-      { className: 'bg-white rounded-lg shadow-md p-6' },
-      React.createElement(
-        'h2',
-        { className: 'text-xl font-bold mb-4 text-gray-800' },
+  return React.createElement('div', { className: 'container mx-auto p-6' },
+    React.createElement('div', { className: 'bg-white rounded-lg shadow-md p-6' },
+      React.createElement('h2', { className: 'text-xl font-bold mb-4 text-gray-800' },
         scenarioId ? 'Редактировать сценарий' : 'Создать сценарий'
       ),
-      React.createElement(
-        'form',
-        { onSubmit: (e) => e.preventDefault() },
+      React.createElement('form', { onSubmit: (e) => e.preventDefault() },
         // Название
-        React.createElement(
-          'div',
-          { className: 'mb-4' },
-          React.createElement(
-            'label',
-            { className: 'block text-sm font-medium text-gray-700 mb-1', htmlFor: 'human_name' },
-            'Название'
-          ),
-          React.createElement(
-            'input',
-            {
-              type: 'text',
-              id: 'human_name',
-              value: humanName,
-              onChange: (e) => { setHumanName(e.target.value); },
-              className: 'w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500',
-              required: true
-            }
-          )
+        React.createElement('div', { className: 'mb-4' },
+          React.createElement('label', { className: 'block text-sm font-medium text-gray-700 mb-1', htmlFor: 'human_name' }, 'Название'),
+          React.createElement('input', { type: 'text', id: 'human_name', value: humanName, onChange: (e) => setHumanName(e.target.value), className: 'w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500', required: true })
         ),
         // Машинное имя
-        React.createElement(
-          'div',
-          { className: 'mb-4' },
-          React.createElement(
-            'label',
-            { className: 'block text-sm font-medium text-gray-700 mb-1', htmlFor: 'machine_name' },
-            'Машинное имя'
-          ),
-          React.createElement(
-            'input',
-            {
-              type: 'text',
-              id: 'machine_name',
-              value: machineName,
-              onChange: (e) => { setMachineName(e.target.value); },
-              className: 'w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500',
-              required: true
-            }
-          )
+        React.createElement('div', { className: 'mb-4' },
+          React.createElement('label', { className: 'block text-sm font-medium text-gray-700 mb-1', htmlFor: 'machine_name' }, 'Машинное имя'),
+          React.createElement('input', { type: 'text', id: 'machine_name', value: machineName, onChange: (e) => setMachineName(e.target.value), className: 'w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500', required: true })
         ),
         // Сборка
-        React.createElement(
-          'div',
-          { className: 'mb-6' },
-          React.createElement(
-            'label',
-            { className: 'block text-sm font-medium text-gray-700 mb-1', htmlFor: 'build_id' },
-            'Сборка'
-          ),
-          React.createElement(
-            'select',
-            {
-              id: 'build_id',
-              value: selectedBuildId,
-              onChange: (e) => {
-                const val = e.target.value;
-                setSelectedBuildId(val);
-                if (val) {
-                  window.currentBuildDataRef = null;
-                  setCurrentBuildData(null);
-                  isImportDone.current = false;
-                  // Теперь loadBuildDataForReference возвращает промис, используем его
-                  loadBuildDataForReference(val);
-                } else {
-                  setHasSelectedBuild(false);
-                  window.currentBuildDataRef = null;
-                  setCurrentBuildData(null);
-                }
-              },
-              className: 'w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500',
-              required: true
+        React.createElement('div', { className: 'mb-6' },
+          React.createElement('label', { className: 'block text-sm font-medium text-gray-700 mb-1', htmlFor: 'build_id' }, 'Сборка'),
+          React.createElement('select', {
+            id: 'build_id',
+            value: selectedBuildId,
+            onChange: (e) => {
+              const val = e.target.value;
+              setSelectedBuildId(val);
+              if (val) {
+                window.currentBuildDataRef = null;
+                setCurrentBuildData(null);
+                isImportDone.current = false;
+                loadBuildDataForReference(val);
+              } else {
+                setHasSelectedBuild(false);
+                window.currentBuildDataRef = null;
+                setCurrentBuildData(null);
+              }
             },
+            className: 'w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500',
+            required: true
+          },
             React.createElement('option', { value: '' }, 'Выберите сборку'),
-            builds.map(build =>
-              React.createElement('option', { key: build.id, value: build.id }, build.human_name)
-            )
+            builds.map(build => React.createElement('option', { key: build.id, value: build.id }, build.human_name))
           )
         ),
         // Визуальный редактор
-        React.createElement(
-          'div',
-          { className: 'mb-6' },
-          React.createElement(
-            'div',
-            { className: 'flex items-center justify-between mb-2' },
-            React.createElement(
-              'h3',
-              { className: 'text-lg font-semibold text-gray-800' },
-              'Визуальный редактор'
-            ),
-            React.createElement(
-              'div',
-              { className: 'flex space-x-2' },
-              React.createElement(
-                'button',
-                {
-                  type: 'button',
-                  onClick: addDataNode,
-                  disabled: !hasSelectedBuild,
-                  className: `px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 focus:outline-none ${!hasSelectedBuild ? 'opacity-50 cursor-not-allowed' : ''}`
-                },
-                '+ Данные'
-              ),
-              React.createElement(
-                'button',
-                {
-                  type: 'button',
-                  onClick: addActionNode,
-                  disabled: !hasSelectedBuild,
-                  className: `px-3 py-1 bg-green-500 text-white text-sm rounded hover:bg-green-600 focus:outline-none ${!hasSelectedBuild ? 'opacity-50 cursor-not-allowed' : ''}`
-                },
-                '+ Действия'
-              ),
-              React.createElement(
-                'button',
-                {
-                  type: 'button',
-                  onClick: addConditionNode,
-                  disabled: !hasSelectedBuild,
-                  className: `px-3 py-1 bg-purple-600 text-white text-sm rounded hover:bg-purple-700 focus:outline-none ${!hasSelectedBuild ? 'opacity-50 cursor-not-allowed' : ''}`
-                },
-                '+ Условие'
-              )
+        React.createElement('div', { className: 'mb-6' },
+          React.createElement('div', { className: 'flex items-center justify-between mb-2' },
+            React.createElement('h3', { className: 'text-lg font-semibold text-gray-800' }, 'Визуальный редактор'),
+            React.createElement('div', { className: 'flex space-x-2' },
+              React.createElement('button', { type: 'button', onClick: addDataNode, disabled: !hasSelectedBuild, className: `px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 focus:outline-none ${!hasSelectedBuild ? 'opacity-50 cursor-not-allowed' : ''}` }, '+ Данные'),
+              React.createElement('button', { type: 'button', onClick: addActionNode, disabled: !hasSelectedBuild, className: `px-3 py-1 bg-green-500 text-white text-sm rounded hover:bg-green-600 focus:outline-none ${!hasSelectedBuild ? 'opacity-50 cursor-not-allowed' : ''}` }, '+ Действия'),
+              React.createElement('button', { type: 'button', onClick: addConditionNode, disabled: !hasSelectedBuild, className: `px-3 py-1 bg-purple-600 text-white text-sm rounded hover:bg-purple-700 focus:outline-none ${!hasSelectedBuild ? 'opacity-50 cursor-not-allowed' : ''}` }, '+ Условие')
             )
           ),
-          React.createElement(
-            'div',
-            {
-              className: `drawflow-wrapper ${!hasSelectedBuild && !flowData ? 'pointer-events-none opacity-50' : ''}`
-            },
-            React.createElement(
-              'div',
-              {
-                ref: drawflowContainerRef,
-                id: 'drawflow',
-                className: ''
-              }
-            )
+          React.createElement('div', { className: `drawflow-wrapper ${!hasSelectedBuild && !flowData ? 'pointer-events-none opacity-50' : ''}` },
+            React.createElement('div', { ref: drawflowContainerRef, id: 'drawflow', className: '' })
           )
         ),
         // Статус
-        React.createElement(
-          'div',
-          { className: 'mb-6 flex items-center' },
-          React.createElement(
-            'label',
-            { className: 'flex items-center cursor-pointer' },
-            React.createElement(
-              'div',
-              { className: 'relative' },
-              React.createElement('input', {
-                type: 'checkbox',
-                className: 'sr-only',
-                checked: isActive,
-                onChange: (e) => { setIsActive(e.target.checked); }
-              }),
-              React.createElement(
-                'div',
-                {
-                  className: `block w-14 h-8 rounded-full transition-colors ${isActive ? 'bg-green-600' : 'bg-gray-300'}`
-                }
-              ),
-              React.createElement(
-                'div',
-                {
-                  className: `absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${isActive ? 'translate-x-6' : ''}`
-                }
-              )
+        React.createElement('div', { className: 'mb-6 flex items-center' },
+          React.createElement('label', { className: 'flex items-center cursor-pointer' },
+            React.createElement('div', { className: 'relative' },
+              React.createElement('input', { type: 'checkbox', className: 'sr-only', checked: isActive, onChange: (e) => setIsActive(e.target.checked) }),
+              React.createElement('div', { className: `block w-14 h-8 rounded-full transition-colors ${isActive ? 'bg-green-600' : 'bg-gray-300'}` }),
+              React.createElement('div', { className: `absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${isActive ? 'translate-x-6' : ''}` })
             ),
-            React.createElement(
-              'span',
-              { className: 'ml-3 text-sm font-medium text-gray-700' },
-              'Глобально включен'
-            )
+            React.createElement('span', { className: 'ml-3 text-sm font-medium text-gray-700' }, 'Глобально включен')
           )
         ),
         // Кнопки
-        React.createElement(
-          'div',
-          { className: 'flex justify-end space-x-2' },
-          React.createElement(
-            'button',
-            {
-              type: 'button',
-              onClick: onClose ? onClose : () => {
-                window.history.pushState({}, '', '/');
-                window.dispatchEvent(new Event('popstate'));
-              },
-              className: 'px-4 py-2 text-gray-700 bg-gray-200 rounded hover:bg-gray-300 focus:outline-none'
+        React.createElement('div', { className: 'flex justify-end space-x-2' },
+          React.createElement('button', {
+            type: 'button',
+            onClick: onClose ? onClose : () => {
+              window.history.pushState({}, '', '/');
+              window.dispatchEvent(new Event('popstate'));
             },
-            'Отмена'
-          ),
-          React.createElement(
-            'button',
-            {
-              type: 'button',
-              onClick: handleSave,
-              disabled: saving,
-              className: 'px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50'
-            },
-            saving ? 'Сохранение...' : 'Сохранить'
-          )
+            className: 'px-4 py-2 text-gray-700 bg-gray-200 rounded hover:bg-gray-300 focus:outline-none'
+          }, 'Отмена'),
+          React.createElement('button', {
+            type: 'button',
+            onClick: handleSave,
+            disabled: saving,
+            className: 'px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50'
+          }, saving ? 'Сохранение...' : 'Сохранить')
         )
       )
     )
