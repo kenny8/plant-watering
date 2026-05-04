@@ -99,8 +99,8 @@ class ScenarioNotification(Base):
     device_id = Column(Integer, nullable=False)
     build_id = Column(Integer, nullable=False)
     scenario_id = Column(Integer, ForeignKey('scenarios.id'), index=True)
-    created_at = Column(String, default=datetime.datetime.now().isoformat)
-    sent_at = Column(String, nullable=True)
+    created_at = Column(String(50), default=datetime.datetime.now().isoformat)
+    sent_at = Column(String(50), nullable=True)
 
 
 class Scenario(Base):
