@@ -1,4 +1,4 @@
-console.log('Загрузка ScenarioEditor.jsx (fixed v6 – fix reset on add)');
+console.log('Загрузка ScenarioEditor.jsx (fixed v5 – only add-node reset fix)');
 
 if (!window.React || !window.axios) {
   console.error('ScenarioEditor.jsx: React или axios не загружены');
@@ -31,6 +31,13 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
   const nodesStateRef = useRef({});
   const isImportDone = useRef(false);
 
+  // Вспомогательная функция для доступа к данным drawflow (учитываем возможную вложенность)
+  const getDrawflowData = (editor) => {
+    if (!editor || !editor.drawflow) return null;
+    // Если внутри drawflow есть ещё один drawflow (вложенность), возвращаем его
+    return editor.drawflow.drawflow || editor.drawflow;
+  };
+
   // 1. Инициализация Drawflow
   useEffect(() => {
     let timer;
@@ -51,9 +58,11 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
           console.log('✓ Drawflow редактор успешно запущен!');
           console.log('Текущий модуль:', editor.module);
 
+          // Обработчик nodeCreated
           editor.on('nodeCreated', (nodeId) => {
+            const drawflowData = getDrawflowData(editor);
             const mod = editor.module;
-            const moduleData = editor.drawflow[mod];
+            const moduleData = drawflowData ? drawflowData[mod] : null;
             if (moduleData && moduleData.data[nodeId]) {
               nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
             }
@@ -65,8 +74,9 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
           });
 
           editor.on('nodeMoved', (nodeId) => {
+            const drawflowData = getDrawflowData(editor);
             const mod = editor.module;
-            const moduleData = editor.drawflow[mod];
+            const moduleData = drawflowData ? drawflowData[mod] : null;
             if (moduleData && moduleData.data[nodeId]) {
               nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
             }
@@ -87,7 +97,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     };
   }, []);
 
-  // 2. Импорт flow_data
+  // 3. Импорт flow_data, когда editor готов, flowData загружен, и данные сборки загружены
   useEffect(() => {
     if (editorReady && flowData && !isImportDone.current && window.currentBuildDataRef) {
       console.log('=== ИМПОРТ FLOW_DATA ===');
@@ -99,38 +109,40 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
         return;
       }
 
+      // Нормализация данных: Drawflow ожидает объект с ключом "drawflow"
       let importData = flowData;
       if (!importData.drawflow) {
+        // Если данных нет или они имеют неверный формат, пробуем обернуть
         if (importData.Home) {
           console.warn('[ИМПОРТ] flowData не содержит обёртку drawflow, оборачиваем');
           importData = { drawflow: { Home: importData.Home } };
         } else {
-          console.error('[ИМПОРТ] Некорректный формат flowData', importData);
+          console.error('[ИМПОРТ] Некорректный формат flowData, импорт невозможен', importData);
           return;
         }
       }
 
       try {
+        // Импортируем
         editor.import(importData);
 
-        // ★ Главная правка: мутирующая нормализация, чтобы избежать двойной вложенности
-        if (editor.drawflow && editor.drawflow.drawflow) {
-          console.log('[ИМПОРТ] Обнаружена вложенная структура drawflow, мутируем editor.drawflow');
-          Object.assign(editor.drawflow, editor.drawflow.drawflow);
-          delete editor.drawflow.drawflow;
-        }
-
+        // НЕ изменяем editor.drawflow вручную!
+        // Теперь editor.drawflow должен содержать данные модулей (например, Home)
         console.log('✓ Flow data импортирован');
         console.log('[ИМПОРТ] editor.drawflow:', editor.drawflow);
-        console.log('[ИМПОРТ] editor.drawflow.Home:', editor.drawflow['Home']);
+        const drawflowData = getDrawflowData(editor);
+        console.log('[ИМПОРТ] drawflowData:', drawflowData);
+        console.log('[ИМПОРТ] drawflowData.Home:', drawflowData ? drawflowData['Home'] : undefined);
         console.log('[ИМПОРТ] currentBuildDataRef:', window.currentBuildDataRef);
         console.log('[ИМПОРТ] build.get_fields:', window.currentBuildDataRef?.get_fields);
 
-        const moduleData = editor.drawflow['Home'];
+        const moduleData = drawflowData ? drawflowData['Home'] : null;
         if (moduleData && moduleData.data) {
           Object.keys(moduleData.data).forEach(nodeId => {
             nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
+            // Сначала привязываем события
             bindNodeEvents(nodeId, editor);
+            // Затем восстанавливаем состояние (с повторными попытками)
             restoreNodeState(nodeId, editor);
           });
           console.log('Сохранено узлов:', Object.keys(nodesStateRef.current).length);
@@ -138,8 +150,10 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
           console.error('[ИМПОРТ] Модуль Home или его data не найдены после импорта');
         }
 
+        // Для диагностики
         setTimeout(() => {
-          const nodesCount = Object.keys(editor.drawflow['Home']?.data || {}).length;
+          const dfData = getDrawflowData(editor);
+          const nodesCount = Object.keys(dfData?.['Home']?.data || {}).length;
           console.log('Узлов в редакторе после импорта:', nodesCount);
         }, 500);
       } catch (error) {
@@ -149,7 +163,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     }
   }, [editorReady, flowData, window.currentBuildDataRef]);
 
-  // Восстановление состояния узла (без изменений)
+  // Восстановление состояния узла из сохранённых данных (с несколькими попытками)
   const restoreNodeState = (nodeId, editor, attempt = 0) => {
     const MAX_ATTEMPTS = 10;
     const nodeElement = document.querySelector(`[id^="node-${nodeId}"]`);
@@ -160,12 +174,13 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     }
     
     if (!nodeElement) {
-      console.warn(`Не удалось найти DOM-элемент для узла ${nodeId}`);
+      console.warn(`Не удалось найти DOM-элемент для узла ${nodeId} после ${MAX_ATTEMPTS} попыток`);
       return;
     }
 
+    const drawflowData = getDrawflowData(editor);
     const mod = editor.module;
-    const nodeData = editor.drawflow[mod]?.data?.[nodeId];
+    const nodeData = drawflowData?.[mod]?.data?.[nodeId];
     if (!nodeData) {
       console.warn(`Нет данных для узла ${nodeId}`);
       return;
@@ -175,16 +190,17 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     const selectedField = data.selected_field;
     const conditionType = data.type || 'comparison';
 
-    // Data node select
+    // Восстановление data node select
     const dataSelect = nodeElement.querySelector('.data-field-select');
     if (dataSelect && selectedField) {
       dataSelect.value = selectedField;
       data.selected_field = selectedField;
-      dataSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      const changeEvent = new Event('change', { bubbles: true });
+      dataSelect.dispatchEvent(changeEvent);
       console.log(`[Восстановление] Data node ${nodeId}: selected field = ${selectedField}`);
     }
 
-    // Action node select + bot parameters
+    // Восстановление action node select + параметры бота
     const actionSelect = nodeElement.querySelector('.action-field-select');
     if (actionSelect && selectedField) {
       actionSelect.value = selectedField;
@@ -192,10 +208,11 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
       const botParameters = data.bot_parameters || {};
       renderBotParameters(nodeId, editor, selectedField, botParameters);
       console.log(`[Восстановление] Action node ${nodeId}: selected field = ${selectedField}`, botParameters);
-      actionSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      const changeEvent = new Event('change', { bubbles: true });
+      actionSelect.dispatchEvent(changeEvent);
     }
 
-    // Condition node
+    // Восстановление condition type + sections + данные
     const conditionSelect = nodeElement.querySelector('.condition-type-select');
     if (conditionSelect) {
       const compSection = nodeElement.querySelector('.condition-comparison-section');
@@ -205,7 +222,8 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
       if (compSection && timeSection && daySection) {
         conditionSelect.value = conditionType;
         data.type = conditionType;
-        conditionSelect.dispatchEvent(new Event('change', { bubbles: true }));
+        const changeEvent = new Event('change', { bubbles: true });
+        conditionSelect.dispatchEvent(changeEvent);
         
         compSection.style.display = 'none';
         timeSection.style.display = 'none';
@@ -238,21 +256,29 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
             const day = parseInt(cb.getAttribute('data-day'));
             cb.checked = days.includes(day);
           });
-          data.days = Array.from(dayCheckboxes).filter(cb => cb.checked).map(cb => parseInt(cb.getAttribute('data-day')));
+          data.days = Array.from(dayCheckboxes)
+                         .filter(cb => cb.checked)
+                         .map(cb => parseInt(cb.getAttribute('data-day')));
         }
         console.log(`[Восстановление] Condition node ${nodeId}: condition type = ${conditionType}`);
       }
     }
   };
 
-  // Отрисовка параметров бота (без изменений)
+  // Единая функция отрисовки параметров бота для action node (с радио-поведением)
   const renderBotParameters = (nodeId, editor, selectedField, botParameters = {}) => {
-    console.log('[renderBotParameters] Called with:', { nodeId, selectedField, botParameters });
+    console.log('[renderBotParameters] Called with:', {
+      nodeId,
+      selectedField,
+      botParameters,
+      buildData: window.currentBuildDataRef ? 'loaded' : 'missing'
+    });
     const nodeElement = document.querySelector(`[id^="node-${nodeId}"]`);
     if (!nodeElement) return;
 
     const paramsContainer = nodeElement.querySelector('.bot-params-container');
     const paramsList = nodeElement.querySelector('.bot-params-list');
+
     if (!paramsContainer || !paramsList) return;
 
     const buildData = window.currentBuildDataRef;
@@ -287,12 +313,17 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
           const paramName = clicked.getAttribute('data-param-name');
           const paramResult = clicked.getAttribute('data-param-result');
 
+          // Одиночный выбор: снимаем остальные
           if (clicked.checked) {
-            checkboxes.forEach(other => { if (other !== clicked) other.checked = false; });
+            checkboxes.forEach(other => {
+              if (other !== clicked) other.checked = false;
+            });
           }
 
+          // Обновляем данные узла
+          const drawflowData = getDrawflowData(editor);
           const mod = editor.module;
-          const moduleData = editor.drawflow[mod];
+          const moduleData = drawflowData?.[mod];
           if (moduleData && moduleData.data[nodeId]) {
             const currentParams = {};
             if (clicked.checked) {
@@ -308,7 +339,6 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     }
   };
 
-  // Привязка событий (адаптировано для прямого использования editor.drawflow)
   const bindNodeEvents = (nodeId, editor) => {
     setTimeout(() => {
       const nodeElement = document.querySelector(`[id^="node-${nodeId}"]`);
@@ -318,10 +348,13 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
       const dataSelect = nodeElement.querySelector('.data-field-select');
       if (dataSelect) {
         dataSelect.addEventListener('change', (e) => {
+          const selectedValue = e.target.value;
+          const drawflowData = getDrawflowData(editor);
           const mod = editor.module;
-          if (editor.drawflow[mod]?.data?.[nodeId]) {
-            editor.drawflow[mod].data[nodeId].data.selected_field = e.target.value;
-            nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(editor.drawflow[mod].data[nodeId]));
+          const moduleData = drawflowData?.[mod];
+          if (moduleData && moduleData.data[nodeId]) {
+            moduleData.data[nodeId].data.selected_field = selectedValue;
+            nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
           }
         });
       }
@@ -330,13 +363,15 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
       const actionSelect = nodeElement.querySelector('.action-field-select');
       if (actionSelect) {
         actionSelect.addEventListener('change', (e) => {
-          const val = e.target.value.trim();
+          const selectedValue = e.target.value.trim();
+          const drawflowData = getDrawflowData(editor);
           const mod = editor.module;
-          if (editor.drawflow[mod]?.data?.[nodeId]) {
-            editor.drawflow[mod].data[nodeId].data.selected_field = val;
-            editor.drawflow[mod].data[nodeId].data.bot_parameters = {};
-            nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(editor.drawflow[mod].data[nodeId]));
-            renderBotParameters(nodeId, editor, val, {});
+          const moduleData = drawflowData?.[mod];
+          if (moduleData && moduleData.data[nodeId]) {
+            moduleData.data[nodeId].data.selected_field = selectedValue;
+            moduleData.data[nodeId].data.bot_parameters = {};
+            nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
+            renderBotParameters(nodeId, editor, selectedValue, {});
           }
         });
       }
@@ -354,28 +389,33 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
             compSection.style.display = 'none';
             timeSection.style.display = 'none';
             daySection.style.display = 'none';
+
             if (type === 'comparison') compSection.style.display = 'block';
             else if (type === 'time') timeSection.style.display = 'block';
             else if (type === 'dayofweek') daySection.style.display = 'block';
 
+            const drawflowData = getDrawflowData(editor);
             const mod = editor.module;
-            if (editor.drawflow[mod]?.data?.[nodeId]) {
-              editor.drawflow[mod].data[nodeId].data.type = type;
-              nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(editor.drawflow[mod].data[nodeId]));
+            const moduleData = drawflowData?.[mod];
+            if (moduleData && moduleData.data[nodeId]) {
+              moduleData.data[nodeId].data.type = type;
+              nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
             }
           });
         }
 
-        // Дополнительные поля условия
+        // Дополнительные обработчики для полей условия
         const operatorSelect = compSection?.querySelector('.condition-operator');
         const valueInput = compSection?.querySelector('.condition-value');
         const timeInput = timeSection?.querySelector('.time-input');
         const dayCheckboxes = daySection?.querySelectorAll('.day-checkbox');
 
         const updateConditionData = () => {
+          const drawflowData = getDrawflowData(editor);
           const mod = editor.module;
-          if (!editor.drawflow[mod]?.data?.[nodeId]) return;
-          const data = editor.drawflow[mod].data[nodeId].data;
+          const moduleData = drawflowData?.[mod];
+          if (!moduleData || !moduleData.data[nodeId]) return;
+          const data = moduleData.data[nodeId].data;
           const type = data.type || 'comparison';
           if (type === 'comparison') {
             data.operator = operatorSelect?.value || '>';
@@ -383,9 +423,11 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
           } else if (type === 'time') {
             data.time = timeInput?.value || '';
           } else if (type === 'dayofweek') {
-            data.days = Array.from(dayCheckboxes).filter(cb => cb.checked).map(cb => parseInt(cb.getAttribute('data-day')));
+            data.days = Array.from(dayCheckboxes)
+                              .filter(cb => cb.checked)
+                              .map(cb => parseInt(cb.getAttribute('data-day')));
           }
-          nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(editor.drawflow[mod].data[nodeId]));
+          nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
         };
 
         if (operatorSelect) operatorSelect.addEventListener('change', updateConditionData);
@@ -401,7 +443,9 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
   const fetchBuilds = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get('/api/builds', { headers: { Authorization: `Bearer ${token}` } });
+      const response = await axios.get('/api/builds', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       setBuilds(response.data.builds || response.data || []);
     } catch (error) {
       console.error('Ошибка загрузки сборок:', error);
@@ -411,9 +455,13 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
   const loadBuildDataForReference = async (id) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get(`/api/builds/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+      const response = await axios.get(`/api/builds/${id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       const build = response.data.build || response.data;
+
       if (!build) return;
+
       window.currentBuildDataRef = build;
       setCurrentBuildData(build);
       console.log('✓ Данные сборки загружены:', build.human_name);
@@ -425,14 +473,15 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
   };
 
   const getAllNodes = (editor) => {
-    if (!editor || !editor.drawflow || !editor.module) return [];
+    const drawflowData = getDrawflowData(editor);
+    if (!drawflowData || !editor.module) return [];
     const mod = editor.module;
-    const moduleData = editor.drawflow[mod];
+    const moduleData = drawflowData[mod];
     if (!moduleData || !moduleData.data) return [];
     return Object.values(moduleData.data);
   };
 
-  // ★ Убираем принудительный changeModule, если модуль уже Home
+  // ★ ЕДИНСТВЕННОЕ ИЗМЕНЕНИЕ: убираем сброс модуля Home ★
   const ensureHomeModule = (editor) => {
     if (editor.module !== 'Home') {
       editor.changeModule('Home');
@@ -442,16 +491,20 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
   const addDataNode = () => {
     if (!editorRef.current) return;
     const editor = editorRef.current;
-    ensureHomeModule(editor);
+    ensureHomeModule(editor);   // <-- вместо editor.changeModule('Home');
 
     const existingNodes = getAllNodes(editor);
-    const maxX = existingNodes.length > 0 ? Math.max(...existingNodes.map(n => n.pos_x)) : 300;
+    const maxX = existingNodes.length > 0
+      ? Math.max(...existingNodes.map(n => n.pos_x))
+      : 300;
+
     let newY = 50;
     const nodeHeight = 180;
     const occupiedYPositions = existingNodes
       .filter(n => n.pos_x >= maxX - 100)
       .map(n => n.pos_y)
       .sort((a, b) => a - b);
+
     for (let i = 0; i < occupiedYPositions.length; i++) {
       if (occupiedYPositions[i] > newY + nodeHeight) break;
       newY = occupiedYPositions[i] + nodeHeight + 20;
@@ -459,6 +512,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
 
     const buildData = window.currentBuildDataRef;
     const postFields = buildData?.post_fields || [];
+
     const fieldOptions = postFields.map((field, index) => {
       const humanName = field.human_name || field.name || field.field_name || `Поле ${index + 1}`;
       const machineName = field.machine_name || field.field_name || `field_${index}`;
@@ -466,7 +520,9 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     }).join('');
 
     const html = `
-      <div class="drawflow_node_header bg-blue-500 text-white px-3 py-2 rounded-t-lg font-medium">📡 Данные (POST)</div>
+      <div class="drawflow_node_header bg-blue-500 text-white px-3 py-2 rounded-t-lg font-medium">
+        📡 Данные (POST)
+      </div>
       <div class="px-3 py-2 text-sm">
         <div class="mb-2">
           <label class="block text-xs text-gray-600 mb-1">Поле:</label>
@@ -489,16 +545,20 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
   const addActionNode = () => {
     if (!editorRef.current) return;
     const editor = editorRef.current;
-    ensureHomeModule(editor);
+    ensureHomeModule(editor);   // <-- вместо editor.changeModule('Home');
 
     const existingNodes = getAllNodes(editor);
-    const maxX = existingNodes.length > 0 ? Math.max(...existingNodes.map(n => n.pos_x)) : 300;
+    const maxX = existingNodes.length > 0
+      ? Math.max(...existingNodes.map(n => n.pos_x))
+      : 300;
+
     let newY = 50;
     const nodeHeight = 150;
     const occupiedYPositions = existingNodes
       .filter(n => n.pos_x >= maxX - 100)
       .map(n => n.pos_y)
       .sort((a, b) => a - b);
+
     for (let i = 0; i < occupiedYPositions.length; i++) {
       if (occupiedYPositions[i] > newY + nodeHeight) break;
       newY = occupiedYPositions[i] + nodeHeight + 20;
@@ -506,6 +566,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
 
     const buildData = window.currentBuildDataRef;
     const getFields = buildData?.get_fields || [];
+
     const botParamsMap = {};
     getFields.forEach(field => {
       const machineName = field.machine_name || field.field_name;
@@ -521,7 +582,9 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     }).join('');
 
     const html = `
-      <div class="drawflow_node_header bg-green-500 text-white px-3 py-2 rounded-t-lg font-medium">⚙️ Действие (GET)</div>
+      <div class="drawflow_node_header bg-green-500 text-white px-3 py-2 rounded-t-lg font-medium">
+        ⚙️ Действие (GET)
+      </div>
       <div class="px-3 py-2 text-sm">
         <div class="mb-2">
           <label class="block text-xs text-gray-600 mb-1">Команда:</label>
@@ -539,23 +602,29 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
 
     try {
       const nodeId = editor.addNode('action', 1, 0, maxX + 50, newY, 'action', { field_name: '', type: 'get', bot_parameters: {} }, html, false);
+
       setTimeout(() => {
         const nodeElement = document.querySelector(`[id^="node-${nodeId}"]`);
         if (nodeElement) {
           const actionSelect = nodeElement.querySelector('.action-field-select');
           const paramsContainer = nodeElement.querySelector('.bot-params-container');
           const paramsList = nodeElement.querySelector('.bot-params-list');
+
           if (actionSelect && paramsContainer && paramsList) {
-            actionSelect.addEventListener('change', () => {
-              const val = actionSelect.value;
+            const updateParams = () => {
+              const selectedValue = actionSelect.value;
+              const drawflowData = getDrawflowData(editor);
               const mod = editor.module;
-              if (editor.drawflow[mod]?.data?.[nodeId]) {
-                editor.drawflow[mod].data[nodeId].data.selected_field = val;
-                editor.drawflow[mod].data[nodeId].data.bot_parameters = {};
-                nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(editor.drawflow[mod].data[nodeId]));
-                renderBotParameters(nodeId, editor, val, {});
+              const moduleData = drawflowData?.[mod];
+              if (moduleData && moduleData.data[nodeId]) {
+                moduleData.data[nodeId].data.selected_field = selectedValue;
+                moduleData.data[nodeId].data.bot_parameters = {};
+                nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
               }
-            });
+              renderBotParameters(nodeId, editor, selectedValue, {});
+            };
+
+            actionSelect.addEventListener('change', updateParams);
           }
         }
       }, 100);
@@ -567,16 +636,20 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
   const addConditionNode = () => {
     if (!editorRef.current) return;
     const editor = editorRef.current;
-    ensureHomeModule(editor);
+    ensureHomeModule(editor);   // <-- вместо editor.changeModule('Home');
 
     const existingNodes = getAllNodes(editor);
-    const maxX = existingNodes.length > 0 ? Math.max(...existingNodes.map(n => n.pos_x)) : 300;
+    const maxX = existingNodes.length > 0
+      ? Math.max(...existingNodes.map(n => n.pos_x))
+      : 300;
+
     let newY = 50;
     const nodeHeight = 220;
     const occupiedYPositions = existingNodes
       .filter(n => n.pos_x >= maxX - 100)
       .map(n => n.pos_y)
       .sort((a, b) => a - b);
+
     for (let i = 0; i < occupiedYPositions.length; i++) {
       if (occupiedYPositions[i] > newY + nodeHeight) break;
       newY = occupiedYPositions[i] + nodeHeight + 20;
@@ -591,7 +664,9 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     `).join('');
 
     const html = `
-      <div class="drawflow_node_header bg-purple-600 text-white px-3 py-2 rounded-t-lg font-medium">🔀 Условие</div>
+      <div class="drawflow_node_header bg-purple-600 text-white px-3 py-2 rounded-t-lg font-medium">
+        🔀 Условие
+      </div>
       <div class="px-3 py-2 text-sm">
         <div class="mb-3">
           <label class="block text-xs text-gray-600 mb-1">Тип условия:</label>
@@ -601,6 +676,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
             <option value="dayofweek">День недели</option>
           </select>
         </div>
+
         <div class="condition-comparison-section">
           <div class="mb-2">
             <label class="block text-xs text-gray-600 mb-1">Оператор:</label>
@@ -618,21 +694,26 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
             <input type="number" class="w-full px-2 py-1 border rounded text-xs condition-value" placeholder="Введите значение" />
           </div>
         </div>
+
         <div class="condition-time-section" style="display:none;">
           <div>
             <label class="block text-xs text-gray-600 mb-1">Время:</label>
             <input type="time" class="w-full px-2 py-1 border rounded text-xs time-input" />
           </div>
         </div>
+
         <div class="condition-dayofweek-section" style="display:none;">
           <label class="block text-xs text-gray-600 mb-2">Дни недели:</label>
-          <div class="grid grid-cols-2 gap-1">${dayCheckboxes}</div>
+          <div class="grid grid-cols-2 gap-1">
+            ${dayCheckboxes}
+          </div>
         </div>
       </div>
     `;
 
     try {
       const nodeId = editor.addNode('condition', 1, 1, maxX + 50, newY, 'condition', { type: 'comparison', operator: '>', value: 0, time: '', days: [] }, html, false);
+
       setTimeout(() => {
         const nodeElement = document.querySelector(`[id^="node-${nodeId}"]`);
         if (nodeElement) {
@@ -640,6 +721,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
           const compSection = nodeElement.querySelector('.condition-comparison-section');
           const timeSection = nodeElement.querySelector('.condition-time-section');
           const daySection = nodeElement.querySelector('.condition-dayofweek-section');
+
           if (typeSelect && compSection && timeSection && daySection) {
             typeSelect.addEventListener('change', (e) => {
               const type = e.target.value;
@@ -649,22 +731,28 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
               if (type === 'comparison') compSection.style.display = 'block';
               else if (type === 'time') timeSection.style.display = 'block';
               else if (type === 'dayofweek') daySection.style.display = 'block';
+
+              const drawflowData = getDrawflowData(editor);
               const mod = editor.module;
-              if (editor.drawflow[mod]?.data?.[nodeId]) {
-                editor.drawflow[mod].data[nodeId].data.type = type;
-                nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(editor.drawflow[mod].data[nodeId]));
+              const moduleData = drawflowData?.[mod];
+              if (moduleData && moduleData.data[nodeId]) {
+                moduleData.data[nodeId].data.type = type;
+                nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
               }
             });
           }
+
           const operatorSelect = compSection?.querySelector('.condition-operator');
           const valueInput = compSection?.querySelector('.condition-value');
           const timeInput = timeSection?.querySelector('.time-input');
           const dayCheckboxes = daySection?.querySelectorAll('.day-checkbox');
 
           const updateConditionData = () => {
+            const drawflowData = getDrawflowData(editor);
             const mod = editor.module;
-            if (!editor.drawflow[mod]?.data?.[nodeId]) return;
-            const data = editor.drawflow[mod].data[nodeId].data;
+            const moduleData = drawflowData?.[mod];
+            if (!moduleData || !moduleData.data[nodeId]) return;
+            const data = moduleData.data[nodeId].data;
             const type = data.type || 'comparison';
             if (type === 'comparison') {
               data.operator = operatorSelect?.value || '>';
@@ -672,9 +760,11 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
             } else if (type === 'time') {
               data.time = timeInput?.value || '';
             } else if (type === 'dayofweek') {
-              data.days = Array.from(dayCheckboxes).filter(cb => cb.checked).map(cb => parseInt(cb.getAttribute('data-day')));
+              data.days = Array.from(dayCheckboxes)
+                                .filter(cb => cb.checked)
+                                .map(cb => parseInt(cb.getAttribute('data-day')));
             }
-            nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(editor.drawflow[mod].data[nodeId]));
+            nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
           };
 
           if (operatorSelect) operatorSelect.addEventListener('change', updateConditionData);
@@ -692,6 +782,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
 
   const handleSave = async () => {
     if (!editorRef.current) return;
+
     setSaving(true);
     try {
       const token = localStorage.getItem('token');
@@ -701,11 +792,13 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
         setSaving(false);
         return;
       }
+
       if (!hasSelectedBuild) {
         alert('Пожалуйста, выберите сборку');
         setSaving(false);
         return;
       }
+
       const payload = {
         human_name: humanName,
         machine_name: machineName,
@@ -713,11 +806,17 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
         flow_data: JSON.stringify(exportedData),
         is_active: isActive
       };
+
       if (scenarioId) {
-        await axios.put(`/api/scenarios/${scenarioId}`, payload, { headers: { Authorization: `Bearer ${token}` } });
+        await axios.put(`/api/scenarios/${scenarioId}`, payload, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
       } else {
-        await axios.post('/api/scenarios', payload, { headers: { Authorization: `Bearer ${token}` } });
+        await axios.post('/api/scenarios', payload, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
       }
+
       window.history.pushState({}, '', '/');
       window.dispatchEvent(new Event('popstate'));
     } catch (error) {
@@ -728,6 +827,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     }
   };
 
+  // Загрузка необходимых данных при монтировании
   useEffect(() => {
     fetchBuilds();
     if (scenarioId) {
@@ -740,12 +840,16 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
   const fetchScenario = async (id) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get(`/api/scenarios/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+      const response = await axios.get(`/api/scenarios/${id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       const scenario = response.data.scenario || response.data;
+
       setHumanName(scenario.human_name || '');
       setMachineName(scenario.machine_name || '');
       setSelectedBuildId(scenario.build_id || '');
       setIsActive(scenario.is_active !== undefined ? scenario.is_active : true);
+
       let parsedFlowData = scenario.flow_data;
       if (typeof scenario.flow_data === 'string') {
         try {
@@ -755,6 +859,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
           parsedFlowData = null;
         }
       }
+
       if (scenario.build_id) {
         window.currentBuildDataRef = null;
         setCurrentBuildData(null);
@@ -762,7 +867,6 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
           await loadBuildDataForReference(scenario.build_id);
           setFlowData(parsedFlowData);
           setHasSelectedBuild(true);
-          isImportDone.current = false;
         } catch (err) {
           console.error('Не удалось загрузить сборку:', err);
           setLoading(false);
@@ -772,6 +876,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
         setFlowData(parsedFlowData);
         setHasSelectedBuild(false);
       }
+
       setLoading(false);
     } catch (error) {
       console.error('Ошибка загрузки сценария:', error);
