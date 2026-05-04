@@ -88,14 +88,14 @@ class DeviceCommand(Base):
     created_at = Column(String)
     is_executed = Column(Boolean, default=False)
 
-class ScenarioNotification(Base):
-    __tablename__ = "scenario_notifications"
+class Notification(Base):
+    """Уведомления (без привязки к сценарию)"""
+    __tablename__ = "notifications"
     id = Column(Integer, primary_key=True, index=True)
     text = Column(Text, nullable=False)
     status = Column(String(50), default="pending")
     device_id = Column(Integer, nullable=False)
     build_id = Column(Integer, nullable=False)
-    scenario_id = Column(Integer, ForeignKey('scenarios.id'), index=True)
     created_at = Column(String(50), default=datetime.datetime.now().isoformat)
     sent_at = Column(String(50), nullable=True)
 
@@ -222,7 +222,7 @@ JWT_SECRET = os.getenv("JWT_SECRET", "your_jwt_secret_key_here")
 ALGORITHM = "HS256"
 
 # ============================================================
-# NEW: Scenario interpreter (fixed and extended)
+# NEW: Scenario interpreter (adapted for new node format)
 # ============================================================
 
 def parse_drawflow_nodes(flow_data: dict) -> dict:
@@ -233,7 +233,7 @@ def parse_drawflow_nodes(flow_data: dict) -> dict:
 
 def build_graph(nodes: dict) -> dict:
     """
-    Build adjacency and reverse adjacency from node outputs.
+    Build adjacency from node inputs/outputs arrays (new format).
     Returns {
         'outgoing': { node_id: [target_node_id, ...] },
         'incoming': { node_id: [source_node_id, ...] }
@@ -242,15 +242,11 @@ def build_graph(nodes: dict) -> dict:
     outgoing = {}
     incoming = {}
     for nid, node in nodes.items():
-        outgoing[nid] = []
-        outputs = node.get('outputs', {})
-        for out_name, out_data in outputs.items():
-            for conn in out_data.get('connections', []):
-                target = conn.get('node')
-                if target:
-                    outgoing[nid].append(target)
-                    incoming.setdefault(target, []).append(nid)
-        incoming.setdefault(nid, [])  # ensure all keys exist
+        outputs = node.get('outputs', [])
+        outgoing[nid] = list(outputs)  # target node IDs
+        for target in outputs:
+            incoming.setdefault(target, []).append(nid)
+        incoming.setdefault(nid, [])
     return {'outgoing': outgoing, 'incoming': incoming}
 
 def topological_sort(nodes: dict, graph: dict) -> list:
@@ -326,12 +322,12 @@ def evaluate_condition(node: dict, input_value) -> bool:
         except ValueError:
             return False
         # Compare current time with the target (here: >= target)
-        return now.time() >= t  # customize if needed
+        return now.time() >= t
 
     elif cond_type == 'dayofweek':
         days = data.get('days', [])
         if not days:
-            return True   # no filter = always true (or False? Usually all days)
+            return True   # no filter = always true
         current_weekday = datetime.datetime.now().weekday()
         return current_weekday in days
 
@@ -340,8 +336,8 @@ def evaluate_condition(node: dict, input_value) -> bool:
 
 def evaluate_visual_scenario(scenario, incoming_data: dict, device_id: int, build: Build, db: Session) -> list:
     """
-    Interpret visual scenario graph with support for standalone conditions
-    (time/dayofweek without data input).
+    Interpret visual scenario graph with the new node format (inputs/outputs arrays).
+    Supports standalone conditions (time/dayofweek) and action nodes with direct bot_parameters.
     """
     flow_data = scenario.flow_data
     if not flow_data:
@@ -380,10 +376,7 @@ def evaluate_visual_scenario(scenario, incoming_data: dict, device_id: int, buil
         if node_type == 'data':
             continue
         if node_type == 'condition' and nid in values:
-            # Already set as standalone, skip unless it receives input later (unlikely)
-            # But if it was set and there ARE inputs, we should recalc with the actual input
-            # However, a standalone condition should have no inputs by definition.
-            # We'll leave as is.
+            # Already set as standalone, skip (no input to override)
             continue
 
         # Gather input values from predecessors
@@ -399,7 +392,6 @@ def evaluate_visual_scenario(scenario, incoming_data: dict, device_id: int, buil
                 result = evaluate_condition(node, input_vals[0])
                 values[nid] = result
             else:
-                # This should not happen if we initialized standalone conditions
                 values[nid] = False
         elif node_type == 'logic':
             logic_type = node['data'].get('logic_type', 'and')
@@ -410,49 +402,41 @@ def evaluate_visual_scenario(scenario, incoming_data: dict, device_id: int, buil
         elif node_type == 'action':
             if input_vals and input_vals[0] is True:
                 selected_field = node['data'].get('selected_field', '')
-                get_fields = build.get_fields or []
-                command_info = None
-                for field in get_fields:
-                    if field.get('machine_name') == selected_field:
-                        command_info = field
-                        break
-                if command_info:
-                    bot_params = command_info.get('bot_parameters', [])
-                    result_value = ''
-                    for param in bot_params:
-                        if param.get('result'):
-                            result_value = param.get('result')
-                            break
-                    cmd = DeviceCommand(
-                        device_id=device_id,
-                        command=selected_field,
-                        value=result_value,
-                        created_at=datetime.datetime.now().isoformat(),
-                        is_executed=False
-                    )
-                    db.add(cmd)
-                    queued_commands.append({
-                        'command': selected_field,
-                        'value': result_value,
-                        'target_device_id': device_id
-                    })
-                    notif = ScenarioNotification(
-                        text=f"Scenario '{scenario.human_name}' triggered: {selected_field}={result_value}",
-                        status='pending',
-                        device_id=device_id,
-                        build_id=build.id,
-                        scenario_id=scenario.id
-                    )
-                    db.add(notif)
+                bot_params = node['data'].get('bot_parameters', {})
+                # Extract value from bot_parameters (simple dict like {"on": "true"})
+                if isinstance(bot_params, dict):
+                    # Take the first value from the dict (or serialize whole)
+                    command_value = str(list(bot_params.values())[0]) if bot_params else ''
+                else:
+                    command_value = str(bot_params)  # fallback
+                cmd = DeviceCommand(
+                    device_id=device_id,
+                    command=selected_field,
+                    value=command_value,
+                    created_at=datetime.datetime.now().isoformat(),
+                    is_executed=False
+                )
+                db.add(cmd)
+                queued_commands.append({
+                    'command': selected_field,
+                    'value': command_value,
+                    'target_device_id': device_id
+                })
+                notif = Notification(
+                    text=f"Scenario '{scenario.human_name}' triggered: {selected_field}={command_value}",
+                    status='pending',
+                    device_id=device_id,
+                    build_id=build.id
+                )
+                db.add(notif)
         elif node_type == 'notification':
             if input_vals and input_vals[0] is True:
                 message = node['data'].get('message', '')
-                notif = ScenarioNotification(
+                notif = Notification(
                     text=message,
                     status='pending',
                     device_id=device_id,
-                    build_id=build.id,
-                    scenario_id=scenario.id
+                    build_id=build.id
                 )
                 db.add(notif)
                 logger.info(f"Notification for scenario {scenario.id}: {message}")
@@ -671,19 +655,13 @@ async def debug_builds(db: Session = Depends(get_db)):
                     {
                         "human_name": field.get('human_name'),
                         "machine_name": field.get('machine_name'),
-                        "bot_parameters": [
-                            {
-                                "human_name": param.get('human_name'),
-                                "machine_name": param.get('machine_name')
-                            } for param in (field.get('bot_parameters') or [])
-                        ]
+                        "bot_parameters": field.get('bot_parameters', [])
                     } for field in (build.get_fields or [])
                 ]
             }
             for build in builds
         ]
     }
-    
 
 
 @app.delete("/api/builds/{id}")
@@ -1032,4 +1010,3 @@ async def toggle_device_scenario(device_id: int, scenario_id: int, db: Session =
     db.refresh(setting)
     
     return setting
-
