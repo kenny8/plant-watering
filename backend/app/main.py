@@ -85,22 +85,10 @@ class DeviceCommand(Base):
     __tablename__ = "device_commands"
     id = Column(Integer, primary_key=True, index=True)
     device_id = Column(Integer, index=True)
-    command = Column(String)  # machine_name команды (например, "fan_control")
-    value = Column(String)  # result параметра бота (например, "high")
+    command = Column(String)
+    value = Column(String)
     created_at = Column(String)
     is_executed = Column(Boolean, default=False)
-
-
-class ScenarioNotification(Base):
-    __tablename__ = "scenario_notifications"
-    id = Column(Integer, primary_key=True, index=True)
-    text = Column(Text, nullable=False)
-    status = Column(String, default="pending")  # pending, sent, failed
-    device_id = Column(Integer, nullable=False)
-    build_id = Column(Integer, nullable=False)
-    scenario_id = Column(Integer, ForeignKey('scenarios.id'), index=True)
-    created_at = Column(String, default=datetime.datetime.now().isoformat)
-    sent_at = Column(String, nullable=True)
 
 
 class Scenario(Base):
@@ -356,171 +344,6 @@ def evaluate_condition(condition_node: Dict[str, Any], incoming_data: Dict[str, 
     return False
 
 
-
-
-def check_day_filter(days):
-    """Check if current weekday matches the day filter."""
-    if days is None or len(days) == 0:
-        return True
-    current_weekday = datetime.datetime.now().weekday()
-    return current_weekday in days
-
-
-def parse_drawflow_nodes(flow_data):
-    """Parse Drawflow flow_data and return nodes dict by ID."""
-    nodes = {}
-    drawflow_data = flow_data.get('drawflow', flow_data)
-    home = drawflow_data.get('Home', {})
-    node_data = home.get('data', {})
-    
-    for node_id, node_info in node_data.items():
-        nodes[node_id] = {
-            'id': node_id,
-            'name': node_info.get('name', ''),
-            'data': node_info.get('data', {}),
-            'pos_x': node_info.get('pos_x', 0),
-            'pos_y': node_info.get('pos_y', 0)
-        }
-    return nodes
-
-
-def get_node_connections(flow_data):
-    """Get connections between nodes: {source_id: [target_id1, target_id2, ...]}"""
-    connections = {}
-    drawflow_data = flow_data.get('drawflow', flow_data)
-    home = drawflow_data.get('Home', {})
-    conns = home.get('connections', [])
-    
-    for conn in conns:
-        source = conn.get('output')
-        target = conn.get('input')
-        if source not in connections:
-            connections[source] = []
-        connections[source].append(target)
-    return connections
-
-
-def evaluate_visual_scenario(scenario, incoming_data, device_id, build, db):
-    """Interpret visual scenario from Drawflow."""
-    queued_commands = []
-    notifications = []
-    
-    try:
-        flow_data = scenario.flow_data
-        if not flow_data:
-            return queued_commands
-        
-        nodes = parse_drawflow_nodes(flow_data)
-        sorted_nodes = sorted(nodes.values(), key=lambda n: n.get('pos_x', 0))
-        
-        for node in sorted_nodes:
-            node_name = node.get('name', '')
-            node_data = node.get('data', {})
-            node_id = node.get('id')
-            
-            if node_name == 'data':
-                # Check if required field exists
-                continue
-                
-            elif node_name == 'condition':
-                # Evaluate condition
-                cond_type = node_data.get('type', 'comparison')
-                condition_met = True
-                
-                if cond_type == 'comparison':
-                    operator = node_data.get('operator', '==')
-                    value = node_data.get('value', 0)
-                    condition_met = False
-                    
-                    for field_name, field_value in incoming_data.items():
-                        try:
-                            incoming_num = float(field_value)
-                            value_num = float(value)
-                            
-                            if operator == '>': condition_met = incoming_num > value_num
-                            elif operator == '<': condition_met = incoming_num < value_num
-                            elif operator == '==': condition_met = incoming_num == value_num
-                            elif operator == '!=': condition_met = incoming_num != value_num
-                            elif operator == '>=': condition_met = incoming_num >= value_num
-                            elif operator == '<=': condition_met = incoming_num <= value_num
-                            
-                            if condition_met: break
-                        except: continue
-                
-                elif cond_type == 'time':
-                    time_str = node_data.get('time', '')
-                    if time_str:
-                        now = datetime.datetime.now()
-                        cond_time = datetime.datetime.strptime(time_str, '%H:%M').time()
-                        condition_met = (now.time() == cond_time)
-                
-                elif cond_type == 'dayofweek':
-                    days = node_data.get('days', [])
-                    condition_met = check_day_filter(days)
-                
-                if not condition_met:
-                    continue
-                    
-            elif node_name == 'action':
-                # Execute action
-                selected_field = node_data.get('selected_field', '')
-                
-                # Find command info from build
-                get_fields = build.get_fields or []
-                command_info = None
-                for field in get_fields:
-                    if field.get('machine_name') == selected_field:
-                        command_info = field
-                        break
-                
-                if not command_info:
-                    continue
-                
-                # Get result value from bot_parameters
-                bot_params = command_info.get('bot_parameters', [])
-                result_value = ''
-                for param in bot_params:
-                    if param.get('result'):
-                        result_value = param.get('result')
-                        break
-                
-                # Create command with result value
-                cmd = DeviceCommand(
-                    device_id=device_id,
-                    command=selected_field,
-                    value=result_value,
-                    created_at=datetime.datetime.now().isoformat(),
-                    is_executed=False
-                )
-                db.add(cmd)
-                queued_commands.append({
-                    'command': selected_field,
-                    'value': result_value,
-                    'target_device_id': device_id
-                })
-                
-                # Create notification
-                notif = ScenarioNotification(
-                    text=f"Scenario '{scenario.human_name}' triggered: {selected_field}={result_value}",
-                    status='pending',
-                    device_id=device_id,
-                    build_id=build.id,
-                    scenario_id=scenario.id
-                )
-                db.add(notif)
-                notifications.append(notif)
-                
-                logger.info(f"Scenario {scenario.id} triggered: {selected_field}={result_value}")
-        
-        if queued_commands:
-            db.commit()
-            
-    except Exception as e:
-        logger.error(f'Error in visual scenario: {e}')
-        db.rollback()
-    
-    return queued_commands
-
 def check_day_filter(day_filter_node: Optional[Dict[str, Any]]) -> bool:
     """
     Check if current weekday matches the day filter.
@@ -537,54 +360,128 @@ def check_day_filter(day_filter_node: Optional[Dict[str, Any]]) -> bool:
 
 def evaluate_device_scenarios(db: Session, device_id: int, incoming_data: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
-    Evaluate all active scenarios for a device using visual interpreter.
-    Учитывает глобальный статус (is_active) и индивидуальную настройку (is_enabled).
+    Evaluate all active scenarios for a device's build and queue commands if conditions are met.
+    Учитывает как глобальный статус сценария, так и индивидуальные настройки устройства.
+    
+    Args:
+        db: Database session
+        device_id: ID of the device
+        incoming_data: Data received from the device
+        
+    Returns:
+        List of queued commands
     """
     queued_commands = []
     
     try:
+        # Get the device to find its build_id
         device = db.query(Device).filter(Device.id == device_id).first()
         if not device:
-            logger.warning(f'Device {device_id} not found')
+            logger.warning(f"Device {device_id} not found for scenario evaluation")
             return queued_commands
         
         build_id = device.build_id
-        build = db.query(Build).filter(Build.id == build_id).first()
-        if not build:
-            logger.warning(f'Build {build_id} not found')
-            return queued_commands
         
-        # Find all globally active scenarios
+        # Find all globally active scenarios for this build
         active_scenarios = db.query(Scenario).filter(
             Scenario.build_id == build_id,
             Scenario.is_active == True
         ).all()
         
-        logger.info(f'Found {len(active_scenarios)} active scenarios for build {build_id}')
+        logger.info(f"Found {len(active_scenarios)} globally active scenarios for build {build_id}")
         
         for scenario in active_scenarios:
-            # Check device-specific setting
+            # Проверяем индивидуальную настройку для этого устройства
             device_setting = db.query(DeviceScenarioSetting).filter(
                 DeviceScenarioSetting.device_id == device_id,
                 DeviceScenarioSetting.scenario_id == scenario.id
             ).first()
             
+            # Если настройка существует и is_enabled=False, пропускаем этот сценарий для данного устройства
             if device_setting and not device_setting.is_enabled:
-                logger.debug(f'Scenario {scenario.id} disabled for device {device_id}')
+                logger.debug(f"Scenario {scenario.id} ({scenario.machine_name}) is disabled for device {device_id}")
                 continue
             
-            # Evaluate using visual interpreter
-            commands = evaluate_visual_scenario(scenario, incoming_data, device_id, build, db)
-            queued_commands.extend(commands)
+            flow_data = scenario.flow_data
+            if not flow_data:
+                continue
+            
+            logger.debug(f"Evaluating scenario {scenario.id} ({scenario.machine_name}) for device {device_id}")
+            
+            # Parse flow_data to find nodes
+            nodes = flow_data.get('nodes', [])
+            
+            trigger_node = None
+            condition_node = None
+            day_filter_node = None
+            action_node = None
+            
+            for node in nodes:
+                node_type = node.get('type')
+                if node_type == 'trigger':
+                    trigger_node = node
+                elif node_type == 'condition':
+                    condition_node = node
+                elif node_type == 'day_filter':
+                    day_filter_node = node
+                elif node_type == 'action':
+                    action_node = node
+            
+            # Check trigger - verify trigger field exists in incoming_data
+            if trigger_node:
+                trigger_field = trigger_node.get('field')
+                if trigger_field and trigger_field not in incoming_data:
+                    logger.debug(f"Scenario {scenario.id}: trigger field '{trigger_field}' not in incoming data")
+                    continue
+            
+            # Check day filter
+            if not check_day_filter(day_filter_node):
+                logger.debug(f"Scenario {scenario.id}: day filter not matched")
+                continue
+            
+            # Check condition
+            if condition_node:
+                if not evaluate_condition(condition_node, incoming_data):
+                    logger.debug(f"Scenario {scenario.id}: condition not met")
+                    continue
+            
+            # If all conditions pass, execute action
+            if action_node:
+                command = action_node.get('command')
+                value = action_node.get('value')
+                target_device_id = action_node.get('target_device_id', device_id)
+                
+                if command:
+                    # Create command record
+                    device_command = DeviceCommand(
+                        device_id=target_device_id,
+                        command=command,
+                        value=str(value) if value else '',
+                        created_at=datetime.datetime.now().isoformat(),
+                        is_executed=False
+                    )
+                    db.add(device_command)
+                    queued_commands.append({
+                        'scenario_id': scenario.id,
+                        'scenario_name': scenario.machine_name,
+                        'command': command,
+                        'value': value,
+                        'target_device_id': target_device_id
+                    })
+                    logger.info(f"Scenario {scenario.id} ({scenario.machine_name}) triggered: command '{command}'={value} queued for device {target_device_id}")
         
         if queued_commands:
-            logger.info(f'Total {len(queued_commands)} commands queued for device {device_id}')
-        
+            db.commit()
+            logger.info(f"Total {len(queued_commands)} commands queued for device {device_id}")
+        else:
+            logger.debug(f"No scenarios triggered for device {device_id}")
+            
     except Exception as e:
-        logger.error(f'Error evaluating scenarios: {e}')
+        logger.error(f"Error evaluating scenarios for device {device_id}: {e}")
         db.rollback()
     
     return queued_commands
+
 
 async def _evaluate_scenarios_async(db: Session, device_id: int, incoming_data: Dict[str, Any]):
     """
