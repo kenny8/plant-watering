@@ -1,4 +1,4 @@
-console.log('Загрузка ScenarioEditor.jsx (fixed v6)');
+console.log('Загрузка ScenarioEditor.jsx (fixed v6 – fix reset on add)');
 
 if (!window.React || !window.axios) {
   console.error('ScenarioEditor.jsx: React или axios не загружены');
@@ -31,14 +31,6 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
   const nodesStateRef = useRef({});
   const isImportDone = useRef(false);
 
-  // Вспомогательная функция для безопасного доступа к данным drawflow
-  const getDrawflowData = (editor) => {
-    if (!editor || !editor.drawflow) return null;
-    // Если структура плоская, вернём editor.drawflow
-    // Если вложенная, вернём editor.drawflow.drawflow (но мы её нормализуем)
-    return editor.drawflow;
-  };
-
   // 1. Инициализация Drawflow
   useEffect(() => {
     let timer;
@@ -59,7 +51,6 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
           console.log('✓ Drawflow редактор успешно запущен!');
           console.log('Текущий модуль:', editor.module);
 
-          // Обработчик nodeCreated
           editor.on('nodeCreated', (nodeId) => {
             const mod = editor.module;
             const moduleData = editor.drawflow[mod];
@@ -96,7 +87,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     };
   }, []);
 
-  // 3. Импорт flow_data
+  // 2. Импорт flow_data
   useEffect(() => {
     if (editorReady && flowData && !isImportDone.current && window.currentBuildDataRef) {
       console.log('=== ИМПОРТ FLOW_DATA ===');
@@ -108,7 +99,6 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
         return;
       }
 
-      // Нормализация данных: Drawflow ожидает объект с ключом "drawflow"
       let importData = flowData;
       if (!importData.drawflow) {
         if (importData.Home) {
@@ -123,16 +113,10 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
       try {
         editor.import(importData);
 
-        // ! Важно: после импорта структура editor.drawflow может быть вложенной {drawflow: {Home: ...}}
-        // Нормализуем её, чтобы не ломать внутренние методы Drawflow
+        // ★ Главная правка: мутирующая нормализация, чтобы избежать двойной вложенности
         if (editor.drawflow && editor.drawflow.drawflow) {
-          console.log('[ИМПОРТ] Обнаружена вложенная структура drawflow, нормализуем');
-          const inner = editor.drawflow.drawflow;
-          // Копируем все модули из вложенного drawflow в корневой объект
-          Object.keys(inner).forEach(key => {
-            editor.drawflow[key] = inner[key];
-          });
-          // Удаляем вложенный drawflow, чтобы не было путаницы
+          console.log('[ИМПОРТ] Обнаружена вложенная структура drawflow, мутируем editor.drawflow');
+          Object.assign(editor.drawflow, editor.drawflow.drawflow);
           delete editor.drawflow.drawflow;
         }
 
@@ -165,7 +149,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     }
   }, [editorReady, flowData, window.currentBuildDataRef]);
 
-  // Восстановление состояния узла из сохранённых данных
+  // Восстановление состояния узла (без изменений)
   const restoreNodeState = (nodeId, editor, attempt = 0) => {
     const MAX_ATTEMPTS = 10;
     const nodeElement = document.querySelector(`[id^="node-${nodeId}"]`);
@@ -261,7 +245,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     }
   };
 
-  // Отрисовка параметров бота для action node (с радио-поведением)
+  // Отрисовка параметров бота (без изменений)
   const renderBotParameters = (nodeId, editor, selectedField, botParameters = {}) => {
     console.log('[renderBotParameters] Called with:', { nodeId, selectedField, botParameters });
     const nodeElement = document.querySelector(`[id^="node-${nodeId}"]`);
@@ -324,7 +308,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     }
   };
 
-  // Привязка событий к DOM-элементам узла
+  // Привязка событий (адаптировано для прямого использования editor.drawflow)
   const bindNodeEvents = (nodeId, editor) => {
     setTimeout(() => {
       const nodeElement = document.querySelector(`[id^="node-${nodeId}"]`);
@@ -448,10 +432,17 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     return Object.values(moduleData.data);
   };
 
+  // ★ Убираем принудительный changeModule, если модуль уже Home
+  const ensureHomeModule = (editor) => {
+    if (editor.module !== 'Home') {
+      editor.changeModule('Home');
+    }
+  };
+
   const addDataNode = () => {
     if (!editorRef.current) return;
     const editor = editorRef.current;
-    editor.changeModule('Home');
+    ensureHomeModule(editor);
 
     const existingNodes = getAllNodes(editor);
     const maxX = existingNodes.length > 0 ? Math.max(...existingNodes.map(n => n.pos_x)) : 300;
@@ -498,7 +489,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
   const addActionNode = () => {
     if (!editorRef.current) return;
     const editor = editorRef.current;
-    editor.changeModule('Home');
+    ensureHomeModule(editor);
 
     const existingNodes = getAllNodes(editor);
     const maxX = existingNodes.length > 0 ? Math.max(...existingNodes.map(n => n.pos_x)) : 300;
@@ -576,7 +567,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
   const addConditionNode = () => {
     if (!editorRef.current) return;
     const editor = editorRef.current;
-    editor.changeModule('Home');
+    ensureHomeModule(editor);
 
     const existingNodes = getAllNodes(editor);
     const maxX = existingNodes.length > 0 ? Math.max(...existingNodes.map(n => n.pos_x)) : 300;
@@ -665,11 +656,11 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
               }
             });
           }
-          // Обработчики полей
           const operatorSelect = compSection?.querySelector('.condition-operator');
           const valueInput = compSection?.querySelector('.condition-value');
           const timeInput = timeSection?.querySelector('.time-input');
           const dayCheckboxes = daySection?.querySelectorAll('.day-checkbox');
+
           const updateConditionData = () => {
             const mod = editor.module;
             if (!editor.drawflow[mod]?.data?.[nodeId]) return;
@@ -685,6 +676,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
             }
             nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(editor.drawflow[mod].data[nodeId]));
           };
+
           if (operatorSelect) operatorSelect.addEventListener('change', updateConditionData);
           if (valueInput) valueInput.addEventListener('input', updateConditionData);
           if (timeInput) timeInput.addEventListener('change', updateConditionData);
@@ -770,7 +762,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
           await loadBuildDataForReference(scenario.build_id);
           setFlowData(parsedFlowData);
           setHasSelectedBuild(true);
-          isImportDone.current = false; // Сброс, т.к. сборка изменилась
+          isImportDone.current = false;
         } catch (err) {
           console.error('Не удалось загрузить сборку:', err);
           setLoading(false);
