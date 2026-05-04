@@ -416,7 +416,12 @@ User Action → Bot Handler → Service Layer → SQLAlchemy → Database
 | `GET` | `/api/health` | Health check | - | `{status: "ok"}` | Нет | Monitoring |
 | `GET` | `/api/scenarios` | Список всех сценариев | - | List[Scenario] | JWT | Frontend |
 | `POST` | `/api/scenarios` | Создание сценария | `{human_name, machine_name, build_id, flow_data, is_active}` | Scenario object | JWT | Frontend |
+| `GET` | `/api/scenarios/{id}` | Получение сценария | id (path) | Scenario object | JWT | Frontend |
+| `PUT` | `/api/scenarios/{id}` | Обновление сценария | id (path), Scenario data | Scenario object | JWT | Frontend |
 | `PATCH` | `/api/scenarios/{id}/toggle` | Переключение активности сценария | id (path) | Scenario object | JWT | Frontend |
+| `DELETE` | `/api/scenarios/{id}` | Удаление сценария | id (path) | `{status: "deleted"}` | JWT | Frontend |
+| `GET` | `/api/devices/{id}/scenarios` | Сценарии привязанные к устройству | id (path) | List[DeviceScenario] | JWT | Frontend |
+| `PATCH` | `/api/devices/{id}/scenarios/{sid}/toggle` | Переключить сценарий устройства | id (path), sid (path) | DeviceScenario object | JWT | Frontend |
 
 ### 3.3 База данных
 
@@ -591,10 +596,14 @@ user_settings:
 | `/assemblies` | Assemblies | Список сборок | `GET /api/builds` | onEditBuild callback | Сервер (CRUD builds) |
 | `/devices` | Devices | Список устройств | `GET /api/devices` | - | Сервер (devices) |
 | `/device-data` | DeviceData | Данные устройства | `GET /api/devices/:id/data` | device_id, limit | Сервер (device data) |
+| `/device-scenarios/:id` | DeviceScenariosPage | Сценарии привязанные к устройству | `GET /api/devices/{id}/scenarios` | device_id | Сервер (device scenarios) |
 | `/settings` | Settings | Настройки | `POST /api/settings/bot-token` | telegram_bot_token | Сервер (settings) |
+| `/scenarios` | ScenariosPage | Список всех сценариев | `GET /api/scenarios`, `GET /api/builds` | - | Сервер (scenarios CRUD) |
+| `/scenarios/create` | ScenarioEditor | Создание нового сценария | `POST /api/scenarios`, `GET /api/builds/{id}` | build_id, flow_data | Сервер (scenarios) |
+| `/scenarios/edit/:id` | ScenarioEditor | Редактирование сценария | `PUT /api/scenarios/{id}`, `GET /api/builds/{id}` | scenarioId, flow_data | Сервер (scenarios) |
 
 **Поп-ап компоненты**:
-- `CreateBuild` — создание новой сборки
+- `CreateBuild` — многошаговый мастер создания сборки (4 шага: имя, POST-запросы, GET-запросы, финальные URL)
 - `EditBuild` — редактирование существующей сборки
 
 ### 4.3 Инициация действий
@@ -602,7 +611,16 @@ user_settings:
 **Формы**:
 - Login форма → `axios.post('/api/auth/login')`
 - Настройки бота → `axios.post('/api/settings/bot-token')`
-- Создание/редактирование сборки → [TODO: уточнить из кода компонентов]
+- Создание сборки → `CreateBuild` поп-ап с 4 шагами → `POST /api/builds`
+- Редактирование сборки → `EditBuild` поп-ап → `PUT /api/builds/{id}`
+- Создание сценария → `ScenarioEditor` → `POST /api/scenarios`
+- Обновление сценария → `ScenarioEditor` → `PUT /api/scenarios/{id}`
+- Тоггл сценария → `ScenariosPage` → `PATCH /api/scenarios/{id}/toggle`
+
+**Визуальный редактор (Drawflow)**:
+- Добавление узла → `editor.addNode()` → сохранение состояния в `nodesStateRef`
+- Изменение select → dispatch `change` event → обновление `moduleData.data[nodeId].data`
+- Импорт flow_data → `editor.import()` → восстановление через `restoreNodeState()`
 
 **Real-time обновления**: [TODO: не реализовано — нет WebSocket/SSE/polling]
 
@@ -624,8 +642,15 @@ window.authState = {
 
 **Токен**: Хранится в `localStorage`
 
+**Состояние редактора сценариев**:
+- `window.currentBuildDataRef` — глобальное хранилище данных выбранной сборки (`post_fields`, `get_fields`)
+- `nodesStateRef` — реф-объект для хранения состояния всех узлов (`{nodeId: nodeData}`)
+- `isImportDone` — флаг для предотвращения повторного импорта flow_data
+- `editorReady` — состояние готовности редактора Drawflow
+
 **Обработка ошибок UI**:
 - Ошибки аутентификации → отображение сообщения в Login компоненте
+- Ошибки импорта flow_data → alert с сообщением в `ScenarioEditor`
 - [TODO: toast/modal уведомления не реализованы]
 
 ### 4.5 Статика, SEO, PWA, деплой
@@ -646,6 +671,274 @@ window.authState = {
 **Деплой-конфиг**:
 - Docker volume: `./frontend/build:/usr/share/nginx/html:ro`
 - Nginx config: `try_files $uri $uri/ /index.html` (SPA fallback)
+
+---
+
+## 4.6 🎨 ВИЗУАЛЬНЫЙ РЕДАКТОР СЦЕНАРИЕВ
+
+### Обзор
+
+Визуальный редактор сценариев реализован с использованием библиотеки **Drawflow.js** — visual flowchart editor для создания узловых workflows. Компонент построен на React 18.20 с стилизацией через TailwindCSS.
+
+**Технологии**:
+- Drawflow.js (через CDN) — visual flowchart editor
+- React 18.2.0 — компоненты и state management
+- Axios 1.5.0 — HTTP запросы к API
+- TailwindCSS — стилизация узлов и интерфейса
+
+### Компоненты редактора
+
+**Основной файл**: `frontend/build/src/components/ScenarioEditor.jsx`
+
+**Key States**:
+- `editorReady` — готовность редактора Drawflow
+- `flowData` — данные сценария из БД (парсится из `scenario.flow_data`)
+- `hasSelectedBuild` — выбрана ли сборка
+- `currentBuildData` — данные выбранной сборки (`post_fields`, `get_fields`)
+- `isImportDone` — флаг предотвращения повторного импорта
+
+**Refs**:
+- `editorRef` — ссылка на экземпляр Drawflow редактора
+- `drawflowContainerRef` — DOM контейнер для рендеринга
+- `nodesStateRef` — хранилище состояния всех узлов `{nodeId: nodeData}`
+- `isImportDone` — контроль импорта flow_data
+
+### Типы узлов в редакторе
+
+| Тип узла | Цвет | Назначение | Вход/Выход |
+|----------|------|------------|------------|
+| **Data Node (POST)** | Синий (#3b82f6) | Отправка данных устройства на сервер | 1 input, 1 output |
+| **Action Node (GET)** | Зеленый (#22c55e) | Выполнение команды на устройстве | 1 input, 0 output |
+| **Condition Node** | Фиолетовый (#a855f7) | Проверка условий и ветвление | 1 input, 1 output |
+
+### Структура узла Data Node
+
+```html
+<div class="drawflow_node_header bg-blue-500">📡 Данные (POST)</div>
+<select class="data-field-select">
+  <option value="">Выберите поле</option>
+  <!-- options из build.post_fields -->
+</select>
+```
+
+**Состояние узла**:
+```javascript
+{
+  selected_field: "temperature",  // machine_name выбранного поля
+  type: "post"
+}
+```
+
+### Структура узла Action Node
+
+```html
+<div class="drawflow_node_header bg-green-500">⚙️ Действие (GET)</div>
+<select class="action-field-select">
+  <option value="">Выберите команду</option>
+  <!-- options из build.get_fields -->
+</select>
+<div class="bot-params-container">
+  <label class="flex items-center">
+    <input type="checkbox" class="bot-param-check" data-param-name="speed" />
+    <span>Скорость вентилятора</span>
+  </label>
+</div>
+```
+
+**Состояние узла**:
+```javascript
+{
+  selected_field: "fan_control",  // machine_name выбранной команды
+  type: "get",
+  bot_parameters: {
+    "speed": "high",
+    "duration": "60"
+  }
+}
+```
+
+**Особенность**: Карточки `bot_parameters` рендерятся динамически на основе `build.get_fields[X].bot_parameters` через функцию `renderBotParameters()`.
+
+### Структура узла Condition Node
+
+```html
+<div class="drawflow_node_header bg-purple-600">🔀 Условие</div>
+<select class="condition-type-select">
+  <option value="comparison">Сравнение значений</option>
+  <option value="time">Время</option>
+  <option value="dayofweek">День недели</option>
+</select>
+
+<!-- Section: Comparison -->
+<div class="condition-comparison-section">
+  <select class="condition-operator">
+    <option value=">">&gt; (больше)</option>
+    <option value="<">&lt; (меньше)</option>
+    <option value="==">== (равно)</option>
+    <option value="!=">!= (не равно)</option>
+    <option value=">=">&gt;= (>=)</option>
+    <option value="<=">&lt;= (<=)</option>
+  </select>
+  <input type="number" class="condition-value" placeholder="Значение" />
+</div>
+
+<!-- Section: Time -->
+<div class="condition-time-section" style="display:none;">
+  <input type="time" class="time-input" />
+</div>
+
+<!-- Section: Day of Week -->
+<div class="condition-dayofweek-section" style="display:none;">
+  <input type="checkbox" class="day-checkbox" data-day="0" /> Пн
+  <input type="checkbox" class="day-checkbox" data-day="1" /> Вт
+  <!-- ... Ср, Чт, Пт, Сб, Вс -->
+</div>
+```
+
+**Состояние узла**:
+```javascript
+{
+  type: "comparison",  // или "time" или "dayofweek"
+  operator: ">",
+  value: 25,
+  time: "12:00",
+  days: [0, 1, 2, 3, 4]  // дни недели (0=Пн, 6=Вс)
+}
+```
+
+### Жизненный цикл компонента
+
+**1. Инициализация Drawflow** (строки 42-98):
+```javascript
+const editor = new window.Drawflow(container);
+editor.reroute = true;
+editor.reroute_fix_curvature = true;
+editor.draggable_nodes = true;
+editor.start();
+
+// Регистрация обработчиков событий
+editor.on('nodeCreated', (nodeId) => { /* save state */ });
+editor.on('nodeRemoved', (nodeId) => { /* delete state */ });
+editor.on('nodeMoved', (nodeId) => { /* update coords */ });
+```
+
+**2. Загрузка данных сборки**:
+- Пользователь выбирает сборку в `<select>`
+- `loadBuildDataForReference(buildId)` запускает `GET /api/builds/{id}`
+- `window.currentBuildDataRef = build` — глобальное хранение для доступа из любых функций
+- UI показывает `post_fields` и `get_fields` как опции в узлах
+
+**3. Импорт flow_data** (строки 101-164):
+```javascript
+// Нормализация формата
+let importData = flowData;
+if (!importData.drawflow && importData.Home) {
+  importData = { drawflow: { Home: importData.Home } };
+}
+
+editor.import(importData);
+
+// Восстановление состояния узлов
+const moduleData = editor.drawflow['Home'];
+Object.keys(moduleData.data).forEach(nodeId => {
+  restoreNodeState(nodeId, editor);
+  bindNodeEvents(nodeId, editor);
+});
+```
+
+**4. Восстановление состояния узлов** (`restoreNodeState`):
+- Поиск DOM элемента: `document.querySelector(\`[id^="node-${nodeId}"]\`)`
+- Восстановление `select.value` для data/action nodes
+- Dispatch `change` event для обновления состояния
+- Восстановление `display: block/none` для condition sections
+- Восстановление `checked` состояния day checkboxes
+- Восстановление `operator`, `value`, `time` значений
+
+**5. Добавление узлов** (`addDataNode`, `addActionNode`, `addConditionNode`):
+- Call `editor.addNode(name, inputs, outputs, x, y, ...)` с HTML-шаблоном
+- Авто-позиционирование: поиск свободной позиции по X/Y координатам
+- `bindNodeEvents(nodeId, editor)` — привязка обработчиков `change`
+
+### Обработчики событий Drawflow
+
+| Event | Описание | Использование |
+|-------|----------|---------------|
+| `nodeCreated` | Узел создан | Сохранение состояния в `nodesStateRef` |
+| `nodeRemoved` | Узел удален | Удаление из `nodesStateRef` |
+| `nodeMoved` | Узел перемещен | Обновление координات в state |
+
+### Изменение данных сборки
+
+Когда пользователь меняет выбранную сборку:
+1. Сбрасывается `window.currentBuildDataRef = null`
+2. Загружаются новые данные сборки через `GET /api/builds/{id}`
+3. `isImportDone.current = false` — возможность повторного импорта
+4. **Важно**: Существующие узлы могут содержать невалидные поля если они выбраны из старой сборки
+
+### Known issues и ограничения
+
+1. **Race condition при импорте**: Импорт может запуститься до готовности editor или данных сборки → используется проверка `window.currentBuildDataRef` и retry logic
+2. **Вложенная структура drawflow**: Иногда export содержит `{drawflow: {drawflow: {...}}}` → нормализация перед импортом
+3. **Имя модуля**: Drawflow может использовать разные регистры (`Home` vs `home`) → динамическое определение модуля
+4. **Синхронизация состояния**: При смене сборки существующие узлы могут содержать невалидные machine_name из старой сборки
+
+### API Endpoints для сценариев
+
+| Метод | Endpoint | Описание |
+|-------|----------|----------|
+| `GET` | `/api/scenarios` | Список всех сценариев |
+| `POST` | `/api/scenarios` | Создать сценарий |
+| `PUT` | `/api/scenarios/{id}` | Обновить сценарий |
+| `PATCH` | `/api/scenarios/{id}/toggle` | Переключить активность |
+| `DELETE` | `/api/scenarios/{id}` | Удалить сценарий |
+| `GET` | `/api/devices/{id}/scenarios` | Сценарии привязанные к устройству |
+| `PATCH` | `/api/devices/{id}/scenarios/{sid}/toggle` | Переключить сценарий устройства |
+
+### Структура данных сценария
+
+**Запрос на создание/обновление**:
+```json
+{
+  "human_name": "Автополив утром",
+  "machine_name": "auto_watering_morning",
+  "build_id": 1,
+  "flow_data": "{Drawflow export JSON}",
+  "is_active": true
+}
+```
+
+**flow_data формат **(Drawflow export)
+```json
+{
+  "drawflow": {
+    "Home": {
+      "data": {
+        "1": {
+          "id": 1,
+          "name": "data",
+          "data": {
+            "selected_field": "soil_humidity",
+            "type": "post"
+          },
+          "pos_x": 300,
+          "pos_y": 50
+        },
+        "2": {
+          "id": 2,
+          "name": "condition",
+          "data": {
+            "type": "comparison",
+            "operator": "<",
+            "value": 30
+          },
+          "pos_x": 500,
+          "pos_y": 50
+        }
+      }
+    }
+  }
+}
+```
 
 ---
 
