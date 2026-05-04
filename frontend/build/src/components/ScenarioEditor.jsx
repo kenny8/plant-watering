@@ -1,4 +1,4 @@
-console.log('Загрузка ScenarioEditor.jsx (fixed v5 + logic node + data no input)');
+console.log('Загрузка ScenarioEditor.jsx (финальная версия с уведомлениями)');
 
 if (!window.React || !window.axios) {
   console.error('ScenarioEditor.jsx: React или axios не загружены');
@@ -180,6 +180,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     const selectedField = data.selected_field;
     const conditionType = data.type || 'comparison';
     const logicType = data.logic_type || 'and';
+    const message = data.message || '';
 
     // Data node select
     const dataSelect = nodeElement.querySelector('.data-field-select');
@@ -259,6 +260,14 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
       data.logic_type = logicType;
       logicSelect.dispatchEvent(new Event('change', { bubbles: true }));
       console.log(`[Восстановление] Logic node ${nodeId}: logic type = ${logicType}`);
+    }
+
+    // Notification node
+    const notificationText = nodeElement.querySelector('.notification-text');
+    if (notificationText) {
+      notificationText.value = message;
+      data.message = message;
+      console.log(`[Восстановление] Notification node ${nodeId}: message restored`);
     }
   };
 
@@ -435,6 +444,21 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
           const moduleData = drawflowData?.[mod];
           if (moduleData && moduleData.data[nodeId]) {
             moduleData.data[nodeId].data.logic_type = type;
+            nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
+          }
+        });
+      }
+
+      // Notification text input (textarea)
+      const notificationText = nodeElement.querySelector('.notification-text');
+      if (notificationText) {
+        notificationText.addEventListener('input', (e) => {
+          const text = e.target.value;
+          const drawflowData = getDrawflowData(editor);
+          const mod = editor.module;
+          const moduleData = drawflowData?.[mod];
+          if (moduleData && moduleData.data[nodeId]) {
+            moduleData.data[nodeId].data.message = text;
             nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
           }
         });
@@ -820,11 +844,54 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     `;
 
     try {
-      // 2 inputs, 1 output
+      // 1 input, 1 output (можно и так, но ты сказал, что исправил на 1 вход)
       editor.addNode('logic', 1, 1, maxX + 50, newY, 'logic', { logic_type: 'and' }, html, false);
       console.log('✓ Логический узел добавлен');
     } catch (error) {
       console.error('✗ Ошибка добавления логического узла:', error);
+    }
+  };
+
+  const addNotificationNode = () => {
+    if (!editorRef.current) return;
+    const editor = editorRef.current;
+    ensureHomeModule(editor);
+
+    const existingNodes = getAllNodes(editor);
+    const maxX = existingNodes.length > 0
+      ? Math.max(...existingNodes.map(n => n.pos_x))
+      : 300;
+
+    let newY = 50;
+    const nodeHeight = 130;
+    const occupiedYPositions = existingNodes
+      .filter(n => n.pos_x >= maxX - 100)
+      .map(n => n.pos_y)
+      .sort((a, b) => a - b);
+
+    for (let i = 0; i < occupiedYPositions.length; i++) {
+      if (occupiedYPositions[i] > newY + nodeHeight) break;
+      newY = occupiedYPositions[i] + nodeHeight + 20;
+    }
+
+    const html = `
+      <div class="drawflow_node_header bg-red-500 text-white px-3 py-2 rounded-t-lg font-medium">
+        ✉️ Уведомление
+      </div>
+      <div class="px-3 py-2 text-sm">
+        <div>
+          <label class="block text-xs text-gray-600 mb-1">Сообщение:</label>
+          <textarea class="w-full px-2 py-1 border rounded text-xs notification-text" rows="3" placeholder="Введите текст уведомления"></textarea>
+        </div>
+      </div>
+    `;
+
+    try {
+      // 1 input, 0 outputs (терминальный узел)
+      editor.addNode('notification', 1, 0, maxX + 50, newY, 'notification', { message: '' }, html, false);
+      console.log('✓ Узел уведомления добавлен');
+    } catch (error) {
+      console.error('✗ Ошибка добавления узла уведомления:', error);
     }
   };
 
@@ -985,7 +1052,8 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
               React.createElement('button', { type: 'button', onClick: addDataNode, disabled: !hasSelectedBuild, className: `px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 focus:outline-none ${!hasSelectedBuild ? 'opacity-50 cursor-not-allowed' : ''}` }, '+ Данные'),
               React.createElement('button', { type: 'button', onClick: addActionNode, disabled: !hasSelectedBuild, className: `px-3 py-1 bg-green-500 text-white text-sm rounded hover:bg-green-600 focus:outline-none ${!hasSelectedBuild ? 'opacity-50 cursor-not-allowed' : ''}` }, '+ Действия'),
               React.createElement('button', { type: 'button', onClick: addConditionNode, disabled: !hasSelectedBuild, className: `px-3 py-1 bg-purple-600 text-white text-sm rounded hover:bg-purple-700 focus:outline-none ${!hasSelectedBuild ? 'opacity-50 cursor-not-allowed' : ''}` }, '+ Условие'),
-              React.createElement('button', { type: 'button', onClick: addLogicNode, disabled: !hasSelectedBuild, className: `px-3 py-1 bg-orange-500 text-white text-sm rounded hover:bg-orange-600 focus:outline-none ${!hasSelectedBuild ? 'opacity-50 cursor-not-allowed' : ''}` }, '+ Логика')
+              React.createElement('button', { type: 'button', onClick: addLogicNode, disabled: !hasSelectedBuild, className: `px-3 py-1 bg-orange-500 text-white text-sm rounded hover:bg-orange-600 focus:outline-none ${!hasSelectedBuild ? 'opacity-50 cursor-not-allowed' : ''}` }, '+ Логика'),
+              React.createElement('button', { type: 'button', onClick: addNotificationNode, disabled: !hasSelectedBuild, className: `px-3 py-1 bg-red-500 text-white text-sm rounded hover:bg-red-600 focus:outline-none ${!hasSelectedBuild ? 'opacity-50 cursor-not-allowed' : ''}` }, '+ Уведомление')
             )
           ),
           React.createElement('div', { className: `drawflow-wrapper ${!hasSelectedBuild && !flowData ? 'pointer-events-none opacity-50' : ''}` },
