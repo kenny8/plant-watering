@@ -1,4 +1,4 @@
-"""
+﻿"""
 Обработчики раздела "📊 Данные" для бота.
 Реализация пагинации списка устройств пользователя и выбора датчиков/полей.
 """
@@ -305,9 +305,9 @@ async def handle_device_select(
                                 fields.append(item)
                             elif isinstance(item, dict):
                                 # Ищем ключи name, key, field_name
-                                field_val = item.get('name') or item.get('key') or item.get('field_name')
-                                if field_val:
-                                    fields.append(str(field_val))
+                                field_human = item.get('human_name') or item.get('human') or item.get('name') or item.get('key') or item.get('field_name')
+                                if field_human:
+                                    fields.append(str(field_human))
                     elif isinstance(post_fields_data, dict):
                         fields = list(post_fields_data.keys())
                 elif isinstance(post_fields_raw, list):
@@ -315,9 +315,9 @@ async def handle_device_select(
                         if isinstance(item, str):
                             fields.append(item)
                         elif isinstance(item, dict):
-                            field_val = item.get('name') or item.get('key') or item.get('field_name')
-                            if field_val:
-                                fields.append(str(field_val))
+                            field_human = item.get('human_name') or item.get('human') or item.get('name') or item.get('key') or item.get('field_name')
+                            if field_human:
+                                fields.append(str(field_human))
                 
                 logger.info(f"Извлечено {len(fields)} полей из builds.post_fields")
             else:
@@ -537,9 +537,9 @@ async def handle_fields_pagination(
                                 if isinstance(item, str):
                                     fields.append(item)
                                 elif isinstance(item, dict):
-                                    field_val = item.get('name') or item.get('key') or item.get('field_name')
-                                    if field_val:
-                                        fields.append(str(field_val))
+                                    field_human = item.get('human_name') or item.get('human') or item.get('name') or item.get('key') or item.get('field_name')
+                                    if field_human:
+                                        fields.append(str(field_human))
                         elif isinstance(post_fields_data, dict):
                             fields = list(post_fields_data.keys())
                     elif isinstance(post_fields_raw, list):
@@ -547,9 +547,9 @@ async def handle_fields_pagination(
                             if isinstance(item, str):
                                 fields.append(item)
                             elif isinstance(item, dict):
-                                field_val = item.get('name') or item.get('key') or item.get('field_name')
-                                if field_val:
-                                    fields.append(str(field_val))
+                                field_human = item.get('human_name') or item.get('human') or item.get('name') or item.get('key') or item.get('field_name')
+                                if field_human:
+                                    fields.append(str(field_human))
         except json.JSONDecodeError as e:
             logger.error(f"Ошибка парсинга JSON post_fields: {e}")
         except Exception as e:
@@ -1106,3 +1106,4 @@ def register_data_handlers(application) -> None:
     application.add_handler(
         CallbackQueryHandler(handle_data_analyze, pattern=r"^data_analyze_\d+_\d+_.+$")
     )
+
