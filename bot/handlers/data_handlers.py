@@ -311,8 +311,6 @@ async def handle_device_select(
                     if machine_name:
                         human_display = item.get("human_name") or item.get("human") or str(machine_name).replace("_", " ").title()
                         fields.append({"machine_name": str(machine_name), "human_display": str(human_display)})
-                    elif isinstance(post_fields_data, dict):
-                        fields = list(post_fields_data.keys())
                 elif isinstance(post_fields_raw, list):
         for item in post_fields_raw:
             if isinstance(item, str):
