@@ -30,21 +30,18 @@ class NotificationService:
 
     async def set_user_notification_status(self, user_id: int, chat_id: int, enabled: bool) -> bool:
         """Устанавливает статус уведомлений пользователя"""
+        logger.info(f"set_user_notification_status: user_id={user_id}, chat_id={chat_id}, enabled={enabled}")
         try:
-            logger.debug(f"Setting notification status for user_id: {user_id}, chat_id: {chat_id} to: {enabled}")
             success = await self.user_settings_service.update_notifications_settings(user_id, chat_id, enabled)
+            logger.info(f"update_notifications_settings result: {success}")
             if success:
                 if enabled:
                     await self.subscribe_user(chat_id, {"user_id": user_id})
-                    logger.debug("Subscribed user to notifications")
                 else:
                     await self.unsubscribe_user(chat_id)
-                    logger.debug("Unsubscribed user from notifications")
-            else:
-                logger.error("Failed to update notification settings in DB")
-                return success
+            return success
         except Exception as e:
-            logger.error(f"Error setting notification status: {e}")
+            logger.error(f"Error in set_user_notification_status: {e}", exc_info=True)
             return False
 
     async def subscribe_user(self, chat_id: int, user_data: Dict[str, Any]):
