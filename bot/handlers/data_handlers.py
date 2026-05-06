@@ -29,7 +29,7 @@ FIELDS_PER_PAGE = 5
 def get_user_devices(database: Database, user_id: int) -> list[tuple[int, int, str]]:
     """
     Получает список устройств пользователя из БД.
-
+    
     Возвращает список кортежей: [(device_id, build_id, device_human_name), ...]
     """
     try:
@@ -55,26 +55,26 @@ def build_devices_keyboard(
 ) -> tuple[InlineKeyboardMarkup, int]:
     """
     Строит inline-клавиатуру с устройствами для указанной страницы.
-
+    
     Args:
         devices: Список кортежей (device_id, build_id, device_human_name)
         page: Номер текущей страницы (0-indexed)
-
+    
     Returns:
         Кортеж (клавиатура, общее_количество_страниц)
     """
     total_devices = len(devices)
     total_pages = max(1, (total_devices + DEVICES_PER_PAGE - 1) // DEVICES_PER_PAGE)
-
+    
     # Нормализуем номер страницы
     page = max(0, min(page, total_pages - 1))
-
+    
     start_idx = page * DEVICES_PER_PAGE
     end_idx = min(start_idx + DEVICES_PER_PAGE, total_devices)
     page_devices = devices[start_idx:end_idx]
-
+    
     keyboard: list[list[InlineKeyboardButton]] = []
-
+    
     # Кнопки устройств - callback_data: data_dev_{device_id}_{build_id}
     for device_id, build_id, device_name in page_devices:
         callback_data = f"data_dev_{device_id}_{build_id}"
@@ -82,11 +82,11 @@ def build_devices_keyboard(
             text=f"📱 {device_name}",
             callback_data=callback_data
         )])
-
+    
     # Кнопки навигации (если страниц больше 1)
     if total_pages > 1:
         nav_row: list[InlineKeyboardButton] = []
-
+        
         # Кнопка "Назад"
         if page > 0:
             nav_row.append(InlineKeyboardButton(
@@ -98,13 +98,13 @@ def build_devices_keyboard(
                 text="·",
                 callback_data="data_list_p0"
             ))
-
+        
         # Индикатор страницы
         nav_row.append(InlineKeyboardButton(
             text=f"{page + 1}/{total_pages}",
             callback_data="data_page_info"
         ))
-
+        
         # Кнопка "Вперёд"
         if page < total_pages - 1:
             nav_row.append(InlineKeyboardButton(
@@ -116,9 +116,9 @@ def build_devices_keyboard(
                 text="·",
                 callback_data=f"data_list_p{page}"
             ))
-
+        
         keyboard.append(nav_row)
-
+    
     return InlineKeyboardMarkup(keyboard), total_pages
 
 
@@ -131,17 +131,17 @@ async def handle_data_section(
     """
     user_id = update.effective_user.id
     logger.info(f"[DATA_SECTION] Пользователь {user_id} открыл раздел 'Данные'")
-
+    
     description_text = (
         "📊 **Раздел данных**\n\n"
         "Здесь агрегируется история показаний датчиков, статусы устройств и аналитика.\n\n"
         "Выберите устройство для просмотра деталей:"
     )
-
+    
     # Получаем устройства из БД
     db: Database = context.bot_data['db']
     devices = get_user_devices(db, user_id)
-
+    
     if not devices:
         logger.warning(f"У пользователя {user_id} нет подключённых устройств")
         await update.message.reply_text(
@@ -149,12 +149,12 @@ async def handle_data_section(
             parse_mode='Markdown'
         )
         return
-
+    
     logger.info(f"Пользователь {user_id} имеет {len(devices)} устройств")
-
+    
     # Строим клавиатуру с первой страницей
     reply_markup, _ = build_devices_keyboard(devices, page=0)
-
+    
     await update.message.reply_text(
         description_text,
         reply_markup=reply_markup,
@@ -171,23 +171,23 @@ async def handle_data_pagination(
     """
     query = update.callback_query
     await query.answer()
-
+    
     user_id = query.from_user.id
     data = query.data
-
+    
     logger.debug(f"[DATA_PAGINATION] Получен callback: {data} от user_id={user_id}")
-
+    
     # Парсим номер страницы из callback_data (формат: data_list_p{page})
     try:
         page = int(data.split('_p')[-1])
     except (ValueError, IndexError):
         logger.warning(f"Неверный формат callback_data: {data}")
         page = 0
-
+    
     # Получаем устройства из БД
     db: Database = context.bot_data['db']
     devices = get_user_devices(db, user_id)
-
+    
     if not devices:
         logger.warning(f"У пользователя {user_id} нет устройств при пагинации")
         await query.edit_message_text(
@@ -195,18 +195,18 @@ async def handle_data_pagination(
             parse_mode='Markdown'
         )
         return
-
+    
     # Строим новую клавиатуру для запрошенной страницы
     reply_markup, total_pages = build_devices_keyboard(devices, page=page)
-
+    
     description_text = (
         "📊 **Раздел данных**\n\n"
         "Здесь агрегируется история показаний датчиков, статусы устройств и аналитика.\n\n"
         "Выберите устройство для просмотра деталей:"
     )
-
+    
     logger.debug(f"Пагинация устройств: страница {page + 1}/{total_pages}")
-
+    
     # Редактируем сообщение с новой клавиатурой
     await query.edit_message_text(
         text=description_text,
@@ -227,12 +227,12 @@ async def handle_device_select(
     """
     query = update.callback_query
     await query.answer()
-
+    
     data = query.data
     user_id = query.from_user.id
-
+    
     logger.info(f"[DEVICE_SELECT] Получен callback: {data} от user_id={user_id}")
-
+    
     # Парсим device_id и build_id из callback_data (формат: data_dev_{device_id}_{build_id})
     try:
         parts = data.split('_')
@@ -243,9 +243,9 @@ async def handle_device_select(
         logger.error(f"Ошибка парсинга callback_data {data}: {e}")
         await query.answer("⚠️ Ошибка: неверный ID устройства", show_alert=True)
         return
-
+    
     db: Database = context.bot_data['db']
-
+    
     # Проверяем, что устройство принадлежит пользователю и получаем human_name
     device_human_name = None
     try:
@@ -266,7 +266,7 @@ async def handle_device_select(
                 logger.warning(f"Устройство device_id={device_id}, build_id={build_id} не найдено у пользователя {user_id}")
     except Exception as e:
         logger.error(f"SQL ошибка при проверке устройства: {e}")
-
+    
     if not device_human_name:
         logger.error(f"Устройство не найдено или не принадлежит пользователю")
         await query.edit_message_text(
@@ -277,10 +277,10 @@ async def handle_device_select(
             ]])
         )
         return
-
+    
     # Получаем список полей (датчиков)
     fields = []
-
+    
     # Сначала пытаемся получить из builds.post_fields
     logger.debug(f"Поиск post_fields в builds для build_id={build_id}")
     try:
@@ -294,62 +294,43 @@ async def handle_device_select(
                 post_fields_raw = row[0]
                 preview = str(post_fields_raw)[:150] + "..." if len(str(post_fields_raw)) > 150 else str(post_fields_raw)
                 logger.debug(f"Получены post_fields из builds (тип={type(post_fields_raw).__name__}): {preview}")
-
-                # Обрабатываем в зависимости от типа
+                
+                # Если это JSON строка - парсим
                 if isinstance(post_fields_raw, str):
-                    # JSON-строка
-                    try:
-                        post_fields_data = json.loads(post_fields_raw)
-                    except json.JSONDecodeError as e:
-                        logger.error(f"Ошибка парсинга JSON post_fields: {e}")
-                        post_fields_data = None
-
+                    post_fields_data = json.loads(post_fields_raw)
                     if isinstance(post_fields_data, list):
+                        # Поддержка разных форматов: ["temp", {"name": "Humidity"}, {"key": "Press"}]
                         for item in post_fields_data:
                             if isinstance(item, str):
-                                machine_name = item
-                                human_display = item.replace("_", " ").title()
-                                fields.append({"machine_name": machine_name, "human_display": human_display})
+                                fields.append(item)
                             elif isinstance(item, dict):
-                                machine_name = item.get("field_name") or item.get("name") or item.get("key")
-                                if machine_name:
-                                    human_display = item.get("human_name") or item.get("human") or str(machine_name).replace("_", " ").title()
-                                    fields.append({"machine_name": str(machine_name), "human_display": str(human_display)})
+                                # Ищем ключи name, key, field_name
+                                field_val = item.get('name') or item.get('key') or item.get('field_name')
+                                if field_val:
+                                    fields.append(str(field_val))
                     elif isinstance(post_fields_data, dict):
-                        # Если это словарь, используем ключи как machine_name
-                        for key in post_fields_data.keys():
-                            human_display = str(key).replace("_", " ").title()
-                            fields.append({"machine_name": str(key), "human_display": human_display})
+                        fields = list(post_fields_data.keys())
                 elif isinstance(post_fields_raw, list):
-                    # Уже список (не JSON)
                     for item in post_fields_raw:
                         if isinstance(item, str):
-                            machine_name = item
-                            human_display = item.replace("_", " ").title()
-                            fields.append({"machine_name": machine_name, "human_display": human_display})
+                            fields.append(item)
                         elif isinstance(item, dict):
-                            machine_name = item.get("field_name") or item.get("name") or item.get("key")
-                            if machine_name:
-                                human_display = item.get("human_name") or item.get("human") or str(machine_name).replace("_", " ").title()
-                                fields.append({"machine_name": str(machine_name), "human_display": str(human_display)})
-                elif isinstance(post_fields_raw, dict):
-                    # Словарь напрямую
-                    for key in post_fields_raw.keys():
-                        human_display = str(key).replace("_", " ").title()
-                        fields.append({"machine_name": str(key), "human_display": human_display})
-
-                if fields:
-                    logger.info(f"Извлечено {len(fields)} полей из builds.post_fields")
-                else:
-                    logger.debug(f"post_fields не дал полей для build_id={build_id}")
+                            field_val = item.get('name') or item.get('key') or item.get('field_name')
+                            if field_val:
+                                fields.append(str(field_val))
+                
+                logger.info(f"Извлечено {len(fields)} полей из builds.post_fields")
             else:
                 logger.debug(f"post_fields пуст или NULL для build_id={build_id}")
+    except json.JSONDecodeError as e:
+        logger.error(f"Ошибка парсинга JSON post_fields: {e}")
     except Exception as e:
         logger.error(f"Ошибка получения post_fields из builds: {e}")
-
+    
     # Fallback: если post_fields пустой, берем из device_data
     if not fields:
-        logger.info(f"post_fields не дал результатов, используем fallback из device_data для device_id={device_id}, build_id={build_id}")
+        logger.info(f"post_fields пустой или NULL для build_id={build_id}, используем fallback")
+        logger.debug(f"Fallback: поиск полей в device_data для device_id={device_id}, build_id={build_id}")
         try:
             with db.engine.connect() as conn:
                 result = conn.execute(
@@ -362,14 +343,14 @@ async def handle_device_select(
                     {"device_id": device_id, "build_id": build_id}
                 )
                 rows = result.fetchall()
-                fields = [{"machine_name": row[0], "human_display": row[0].replace("_", " ").title()} for row in rows if row[0]]
+                fields = [row[0] for row in rows if row[0]]
                 logger.info(f"Извлечено {len(fields)} полей из device_data.field_name")
         except Exception as e:
             logger.error(f"Ошибка получения полей из device_data: {e}")
-
+    
     # Формируем заголовок
     header_text = f"📊 Данные: {device_human_name}\n\nВыберите датчик:"
-
+    
     if not fields:
         logger.warning(f"Нет доступных полей для устройства device_id={device_id}, build_id={build_id}")
         await query.edit_message_text(
@@ -380,10 +361,10 @@ async def handle_device_select(
             ]])
         )
         return
-
+    
     # Строим клавиатуру с полями (первая страница)
     reply_markup, total_pages = build_fields_keyboard(fields, device_id, build_id, page=0)
-
+    
     logger.info(f"Отправка списка полей: {len(fields)} шт., страниц={total_pages}")
     await query.edit_message_text(
         text=header_text,
@@ -393,53 +374,46 @@ async def handle_device_select(
 
 
 def build_fields_keyboard(
-    fields, device_id: int, build_id: int, page: int = 0
+    fields: list[str], device_id: int, build_id: int, page: int = 0
 ) -> tuple[InlineKeyboardMarkup, int]:
     """
     Строит inline-клавиатуру с полями (датчиками) для указанной страницы.
-
+    
     Args:
-        fields: Список полей (каждое поле – словарь с ключами machine_name, human_display)
+        fields: Список названий полей
         device_id: ID устройства
         build_id: ID сборки
         page: Номер текущей страницы (0-indexed)
-
+    
     Returns:
         Кортеж (клавиатура, общее_количество_страниц)
     """
     total_fields = len(fields)
     total_pages = max(1, (total_fields + FIELDS_PER_PAGE - 1) // FIELDS_PER_PAGE)
-
+    
     # Нормализуем номер страницы
     page = max(0, min(page, total_pages - 1))
-
+    
     start_idx = page * FIELDS_PER_PAGE
     end_idx = min(start_idx + FIELDS_PER_PAGE, total_fields)
     page_fields = fields[start_idx:end_idx]
-
+    
     keyboard: list[list[InlineKeyboardButton]] = []
-
+    
     # Кнопки полей - callback_data: data_field_{device_id}_{build_id}_{field_name}
-    for field in page_fields:
-        # Извлекаем machine_name и human_display из структуры поля
-        if isinstance(field, str):
-            field_machine = field
-            field_display = field
-        else:
-            field_machine = field.get("machine_name", "")
-            field_display = field.get("human_display", field_machine)
-
-        safe_field = field_machine.replace(" ", "_").replace("-", "_").replace(".", "_")[:32]
+    for field_name in page_fields:
+        # Экранируем специальные символы в callback_data
+        safe_field = field_name.replace(" ", "_").replace("-", "_").replace(".", "_")[:32]
         callback_data = f"data_field_{device_id}_{build_id}_{safe_field}"
         keyboard.append([InlineKeyboardButton(
-            text=f"📈 {field_display}",
+            text=f"📈 {field_name}",
             callback_data=callback_data
         )])
-
+    
     # Кнопки навигации (если страниц больше 1)
     if total_pages > 1:
         nav_row: list[InlineKeyboardButton] = []
-
+        
         # Кнопка "<" Назад
         if page > 0:
             nav_row.append(InlineKeyboardButton(
@@ -451,13 +425,13 @@ def build_fields_keyboard(
                 text="<",
                 callback_data=f"data_fields_{device_id}_{build_id}_p0"
             ))
-
+        
         # Индикатор страницы
         nav_row.append(InlineKeyboardButton(
             text=f"{page + 1}/{total_pages}",
             callback_data="data_fields_page_info"
         ))
-
+        
         # Кнопка ">" Вперёд
         if page < total_pages - 1:
             nav_row.append(InlineKeyboardButton(
@@ -469,15 +443,15 @@ def build_fields_keyboard(
                 text=">",
                 callback_data=f"data_fields_{device_id}_{build_id}_p{page}"
             ))
-
+        
         keyboard.append(nav_row)
-
+    
     # Кнопка "🔙 Назад к устройствам"
     keyboard.append([InlineKeyboardButton(
         text="🔙 Назад к устройствам",
         callback_data="data_list_p0"
     )])
-
+    
     return InlineKeyboardMarkup(keyboard), total_pages
 
 
@@ -491,15 +465,17 @@ async def handle_fields_pagination(
     """
     query = update.callback_query
     await query.answer()
-
+    
     data = query.data
     user_id = query.from_user.id
-
+    
     logger.debug(f"[FIELDS_PAGINATION] Получен callback: {data} от user_id={user_id}")
-
+    
     # Парсим callback_data: data_fields_{device_id}_{build_id}_p{page}
     try:
         parts = data.split('_')
+        # data_fields_{device_id}_{build_id}_p{page}
+        # parts: ['data', 'fields', '{device_id}', '{build_id}', 'p{page}']
         device_id = int(parts[2])
         build_id = int(parts[3])
         page = int(parts[-1][1:])  # Убираем префикс 'p'
@@ -507,9 +483,9 @@ async def handle_fields_pagination(
     except (ValueError, IndexError) as e:
         logger.error(f"Ошибка парсинга callback_data для полей: {e}")
         return
-
+    
     db: Database = context.bot_data['db']
-
+    
     # Проверяем принадлежность устройства пользователю и получаем human_name
     device_human_name = None
     try:
@@ -528,7 +504,7 @@ async def handle_fields_pagination(
                 logger.debug(f"Устройство найдено: human_name='{device_human_name}'")
     except Exception as e:
         logger.error(f"Ошибка получения информации об устройстве: {e}")
-
+    
     if not device_human_name:
         logger.warning(f"Устройство не найдено у пользователя {user_id}")
         await query.edit_message_text(
@@ -539,30 +515,79 @@ async def handle_fields_pagination(
             ]])
         )
         return
-
+    
     # Получаем список полей (та же логика что и в handle_device_select)
-    fields = _get_device_fields(db, device_id, build_id)
-
+    fields = []
+    
+    # Пытаемся получить из builds.post_fields
+    if build_id:
+        try:
+            with db.engine.connect() as conn:
+                result = conn.execute(
+                    text("SELECT post_fields FROM builds WHERE id = :build_id"),
+                    {"build_id": build_id}
+                )
+                row = result.fetchone()
+                if row and row[0]:
+                    post_fields_raw = row[0]
+                    if isinstance(post_fields_raw, str):
+                        post_fields_data = json.loads(post_fields_raw)
+                        if isinstance(post_fields_data, list):
+                            for item in post_fields_data:
+                                if isinstance(item, str):
+                                    fields.append(item)
+                                elif isinstance(item, dict):
+                                    field_val = item.get('name') or item.get('key') or item.get('field_name')
+                                    if field_val:
+                                        fields.append(str(field_val))
+                        elif isinstance(post_fields_data, dict):
+                            fields = list(post_fields_data.keys())
+                    elif isinstance(post_fields_raw, list):
+                        for item in post_fields_raw:
+                            if isinstance(item, str):
+                                fields.append(item)
+                            elif isinstance(item, dict):
+                                field_val = item.get('name') or item.get('key') or item.get('field_name')
+                                if field_val:
+                                    fields.append(str(field_val))
+        except json.JSONDecodeError as e:
+            logger.error(f"Ошибка парсинга JSON post_fields: {e}")
+        except Exception as e:
+            logger.error(f"Ошибка получения post_fields: {e}")
+    
+    # Fallback: device_data
     if not fields:
-        logger.warning(f"Нет полей для устройства device_id={device_id}, build_id={build_id}")
+        try:
+            with db.engine.connect() as conn:
+                result = conn.execute(
+                    text("""
+                        SELECT DISTINCT field_name
+                        FROM device_data
+                        WHERE device_id = :device_id AND build_id = :build_id
+                        ORDER BY field_name
+                    """),
+                    {"device_id": device_id, "build_id": build_id}
+                )
+                rows = result.fetchall()
+                fields = [row[0] for row in rows if row[0]]
+        except Exception as e:
+            logger.error(f"Ошибка получения полей из device_data: {e}")
+    
+    header_text = f"📊 Данные: {device_human_name}\n\nВыберите датчик:"
+    
+    if not fields:
         await query.edit_message_text(
-            text="⚠️ _Нет доступных полей._",
+            text=header_text + "\n\n⚠️ _Нет доступных данных для этого устройства._",
             parse_mode='Markdown',
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton(text="🔙 К списку устройств", callback_data="data_list_p0")
             ]])
         )
         return
-
-    # Формируем заголовок
-    header_text = f"📊 Данные: {device_human_name}\n\nВыберите датчик:"
-
-    # Строим клавиатуру для запрошенной страницы
+    
     reply_markup, total_pages = build_fields_keyboard(fields, device_id, build_id, page=page)
-
+    
     logger.debug(f"Пагинация полей: страница {page + 1}/{total_pages}")
-
-    # Редактируем сообщение
     await query.edit_message_text(
         text=header_text,
         reply_markup=reply_markup,
@@ -570,91 +595,20 @@ async def handle_fields_pagination(
     )
 
 
-def _get_device_fields(db: Database, device_id: int, build_id: int) -> list[dict]:
-    """
-    Вспомогательная функция для получения списка полей устройства.
-    Возвращает список словарей с ключами 'machine_name' и 'human_display'.
-    """
-    fields = []
-
-    # Пытаемся получить из builds.post_fields
-    try:
-        with db.engine.connect() as conn:
-            result = conn.execute(
-                text("SELECT post_fields FROM builds WHERE id = :build_id"),
-                {"build_id": build_id}
-            )
-            row = result.fetchone()
-            if row and row[0]:
-                post_fields_raw = row[0]
-
-                if isinstance(post_fields_raw, str):
-                    try:
-                        post_fields_data = json.loads(post_fields_raw)
-                    except json.JSONDecodeError:
-                        post_fields_data = None
-
-                    if isinstance(post_fields_data, list):
-                        for item in post_fields_data:
-                            if isinstance(item, str):
-                                machine_name = item
-                                human_display = item.replace("_", " ").title()
-                                fields.append({"machine_name": machine_name, "human_display": human_display})
-                            elif isinstance(item, dict):
-                                machine_name = item.get("field_name") or item.get("name") or item.get("key")
-                                if machine_name:
-                                    human_display = item.get("human_name") or item.get("human") or str(machine_name).replace("_", " ").title()
-                                    fields.append({"machine_name": str(machine_name), "human_display": str(human_display)})
-                    elif isinstance(post_fields_data, dict):
-                        for key in post_fields_data.keys():
-                            human_display = str(key).replace("_", " ").title()
-                            fields.append({"machine_name": str(key), "human_display": human_display})
-                elif isinstance(post_fields_raw, list):
-                    for item in post_fields_raw:
-                        if isinstance(item, str):
-                            machine_name = item
-                            human_display = item.replace("_", " ").title()
-                            fields.append({"machine_name": machine_name, "human_display": human_display})
-                        elif isinstance(item, dict):
-                            machine_name = item.get("field_name") or item.get("name") or item.get("key")
-                            if machine_name:
-                                human_display = item.get("human_name") or item.get("human") or str(machine_name).replace("_", " ").title()
-                                fields.append({"machine_name": str(machine_name), "human_display": str(human_display)})
-                elif isinstance(post_fields_raw, dict):
-                    for key in post_fields_raw.keys():
-                        human_display = str(key).replace("_", " ").title()
-                        fields.append({"machine_name": str(key), "human_display": human_display})
-    except Exception as e:
-        logger.error(f"Ошибка получения post_fields: {e}")
-
-    # Fallback: если поля не найдены, берем из device_data
-    if not fields:
-        try:
-            with db.engine.connect() as conn:
-                result = conn.execute(
-                    text("""
-                        SELECT DISTINCT field_name 
-                        FROM device_data 
-                        WHERE device_id = :device_id AND build_id = :build_id
-                        ORDER BY field_name
-                    """),
-                    {"device_id": device_id, "build_id": build_id}
-                )
-                rows = result.fetchall()
-                fields = [{"machine_name": row[0], "human_display": row[0].replace("_", " ").title()} for row in rows if row[0]]
-        except Exception as e:
-            logger.error(f"Ошибка получения полей из device_data: {e}")
-
-    return fields
-
 
 async def handle_field_select(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
     """
-    Обработчик выбора конкретного датчика/поля.
+    Обработчик выбора конкретного поля (датчика).
     callback_data: data_field_{device_id}_{build_id}_{field_name}
-    Показывает историю показаний (последние 20 записей).
+    
+    Этап 3: Вывод последних 20 показаний датчика.
+    - Заголовок: 📊 Показание: {field_name} (_ → пробелы, первая буква заглавная)
+    - Запрос в БД: SELECT field_value, created_at FROM device_data WHERE device_id=? AND build_id=? AND field_name=? ORDER BY created_at DESC LIMIT 20
+    - Формат: 🕒 {DD.MM.YYYY, HH:MM:SS} | 📏 {field_value}
+    - Лимит Telegram: 4096 символов, обрезка с предупреждением если превышено
+    - Кнопки: 🔙 Назад к датчикам, 🔙 Назад к устройствам
     """
     query = update.callback_query
     await query.answer()
@@ -674,10 +628,9 @@ async def handle_field_select(
         remaining_parts = remaining.split('_', 1)
         build_id = int(remaining_parts[0])
         field_name_encoded = remaining_parts[1] if len(remaining_parts) > 1 else ""
-        # field_name_encoded – это machine_name с подчёркиваниями вместо пробелов
-        field_machine = field_name_encoded  # в БД используем точное значение с подчёркиваниями
-        field_display = field_machine.replace("_", " ").title()
-        logger.debug(f"Распарсены параметры: device_id={device_id}, build_id={build_id}, field_machine='{field_machine}'")
+        # Восстанавливаем исходное имя поля (заменяем _ обратно на пробелы)
+        field_name = field_name_encoded.replace("_", " ")
+        logger.debug(f"Распарсены параметры: device_id={device_id}, build_id={build_id}, field_name='{field_name}'")
     except (ValueError, IndexError) as e:
         logger.error(f"Ошибка парсинга callback_data для поля: {e}")
         await query.answer("⚠️ Ошибка: неверный формат данных", show_alert=True)
@@ -706,8 +659,13 @@ async def handle_field_select(
 
     display_name = device_human_name if device_human_name else f"Устройство #{device_id}"
 
-    # Запрос в БД: последние 20 записей для device_id, build_id, field_machine
-    logger.info(f"Выполнение SQL-запроса для device_id={device_id}, build_id={build_id}, field_machine='{field_machine}'")
+    # Форматируем имя поля для заголовка: заменяем _ на пробелы, первую букву заглавной
+    # Для каждого слова делаем первую букву заглавной
+    field_display = " ".join(word.capitalize() for word in field_name.split())
+    logger.debug(f"Отображаемое имя поля: '{field_display}'")
+
+    # Запрос в БД: последние 20 записей для device_id, build_id, field_name
+    logger.info(f"Выполнение SQL-запроса для device_id={device_id}, build_id={build_id}, field_name='{field_name}'")
     readings = []
     total_count = 0
     try:
@@ -719,25 +677,25 @@ async def handle_field_select(
                     FROM device_data 
                     WHERE device_id = :device_id 
                       AND build_id = :build_id 
-                      AND field_name = :field_machine
+                      AND field_name = :field_name
                 """),
-                {"device_id": device_id, "build_id": build_id, "field_machine": field_machine}
+                {"device_id": device_id, "build_id": build_id, "field_name": field_name}
             )
             total_count = count_result.scalar() or 0
-            logger.debug(f"Общее количество записей в БД: {total_count}")
+            logger.debug(f"Общее количество записей в БД (строго по device_id={device_id}, build_id={build_id}, field='{field_name}'): {total_count}")
 
-            # Получаем последние 20 записей
+            # Получаем последние 20 записей - СТРОГО по тройке ключей
             result = conn.execute(
                 text("""
                     SELECT field_value, created_at 
                     FROM device_data 
                     WHERE device_id = :device_id 
                       AND build_id = :build_id 
-                      AND field_name = :field_machine
+                      AND field_name = :field_name
                     ORDER BY created_at DESC
                     LIMIT 20
                 """),
-                {"device_id": device_id, "build_id": build_id, "field_machine": field_machine}
+                {"device_id": device_id, "build_id": build_id, "field_name": field_name}
             )
             rows = result.fetchall()
             readings = [(row[0], row[1]) for row in rows]
@@ -756,9 +714,9 @@ async def handle_field_select(
 
     # Формируем текст сообщения
     header_text = f"📊 Показание: {field_display}\n\n"
-
+    
     if not readings:
-        logger.warning(f"Нет записей для field_machine='{field_machine}', device_id={device_id}, build_id={build_id}")
+        logger.warning(f"Нет записей для field_name='{field_name}', device_id={device_id}, build_id={build_id}")
         message_text = header_text + "📭 Записей пока нет"
     else:
         lines = []
@@ -769,15 +727,15 @@ async def handle_field_select(
             except AttributeError:
                 # Если created_at уже строка
                 date_str = str(created_at)[:19] if created_at else "N/A"
-
+            
             # Форматируем значение
             value_str = str(field_value) if field_value is not None else "N/A"
             lines.append(f"🕒 {date_str} | 📏 {value_str}")
-
+        
         # Проверяем лимит Telegram (4096 символов)
         base_text = header_text + "\n".join(lines)
         logger.debug(f"Длина текста до проверки лимита: {len(base_text)} символов")
-
+        
         if len(base_text) > 4096:
             # Обрезаем список до безопасного количества строк
             max_lines = 0
@@ -786,7 +744,7 @@ async def handle_field_select(
                 if len(test_text) <= 4096:
                     max_lines = i
                     break
-
+            
             # Добавляем предупреждение
             lines = lines[:max_lines]
             warning_text = f"\n\n⚠️ Показано {len(lines)} из {len(readings)} записей"
@@ -811,7 +769,7 @@ async def handle_field_select(
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     logger.info(f"Отправка edit_message_text с показаниями датчика ({len(message_text)} символов)")
-
+    
     # Редактируем сообщение
     await query.edit_message_text(
         text=message_text,
@@ -826,20 +784,20 @@ async def handle_data_export(
     """
     Обработчик экспорта данных в Excel.
     callback_data: data_export_{device_id}_{build_id}_{field_name}
-
-    Логика:
+    
+    Логика (Этап 4):
     1. Отправляет НОВОЕ сообщение с Excel-файлом
     2. Отправляет НОВОЕ текстовое сообщение с кнопками навигации
     3. Редактирует ИСХОДНОЕ сообщение: убирает кнопки, добавляет "✅ Файл сформирован..."
     """
     query = update.callback_query
     await query.answer()
-
+    
     data = query.data
     user_id = query.from_user.id
-
+    
     logger.info(f"[DATA_EXPORT] Получен callback: {data} от user_id={user_id}")
-
+    
     # Парсим device_id, build_id и field_name из callback_data
     # Формат: data_export_{device_id}_{build_id}_{field_name}
     try:
@@ -855,10 +813,10 @@ async def handle_data_export(
         logger.error(f"Ошибка парсинга callback_data для экспорта: {e}")
         await query.answer("⚠️ Ошибка: неверный формат данных", show_alert=True)
         return
-
+    
     db: Database = context.bot_data['db']
     chat_id = query.message.chat_id
-
+    
     # Проверяем принадлежность устройства пользователю
     device_human_name = None
     try:
@@ -877,12 +835,12 @@ async def handle_data_export(
                 logger.debug(f"Устройство найдено: human_name='{device_human_name}'")
     except Exception as e:
         logger.error(f"Ошибка получения информации об устройстве: {e}")
-
+    
     if not device_human_name:
         logger.warning(f"Устройство не найдено у пользователя {user_id}")
         await query.answer("⚠️ Устройство не найдено", show_alert=True)
         return
-
+    
     # Генерируем Excel-файл
     logger.info(f"[DATA_EXPORT] Генерация Excel-файла для field_name='{field_name}'")
     try:
@@ -893,11 +851,11 @@ async def handle_data_export(
         logger.error(f"[DATA_EXPORT] Ошибка генерации Excel: {e}")
         await query.answer(f"⚠️ Ошибка создания файла: {e}", show_alert=True)
         return
-
+    
     # Формируем имя файла
     filename = format_filename(field_name, device_id)
     field_display = " ".join(word.capitalize() for word in field_name.split())
-
+    
     # 1️⃣ Отправляем НОВОЕ сообщение с файлом
     logger.info(f"[DATA_EXPORT] Отправка файла {filename} в чат {chat_id}")
     try:
@@ -914,7 +872,7 @@ async def handle_data_export(
         logger.error(f"[DATA_EXPORT] Ошибка отправки файла: {e}")
         await query.answer(f"⚠️ Ошибка отправки файла: {e}", show_alert=True)
         return
-
+    
     # 2️⃣ Отправляем НОВОЕ текстовое сообщение с кнопками навигации под файлом
     logger.info(f"[DATA_EXPORT] Отправка сообщения с кнопками навигации")
     nav_keyboard = [
@@ -924,7 +882,7 @@ async def handle_data_export(
         ]
     ]
     nav_markup = InlineKeyboardMarkup(nav_keyboard)
-
+    
     try:
         nav_message = await context.bot.send_message(
             chat_id=chat_id,
@@ -936,7 +894,7 @@ async def handle_data_export(
         logger.info(f"[DATA_EXPORT] Сообщение с кнопками отправлено (message_id={nav_message.message_id})")
     except Exception as e:
         logger.error(f"[DATA_EXPORT] Ошибка отправки сообщения с кнопками: {e}")
-
+    
     # 3️⃣ Редактируем ИСХОДНОЕ сообщение: убираем кнопки, добавляем подтверждение
     logger.info(f"[DATA_EXPORT] Редактирование исходного сообщения")
     try:
@@ -947,7 +905,7 @@ async def handle_data_export(
             confirm_text = original_text + "\n\n✅ Файл сформирован и отправлен выше."
         else:
             confirm_text = original_text + "\n\n✅ Файл сформирован и отправлен выше."
-
+        
         # Убираем все кнопки из исходного сообщения
         await query.edit_message_text(
             text=confirm_text[:4096],  # На случай если добавление текста превысило лимит
@@ -965,20 +923,20 @@ async def handle_data_analyze(
     """
     Обработчик анализа данных с построением графика.
     callback_data: data_analyze_{device_id}_{build_id}_{field_name}
-
-    Логика:
+    
+    Логика (Этап 5):
     1. Отправляет НОВОЕ сообщение с ГРАФИКОМ (send_photo)
     2. Отправляет ещё одно НОВОЕ текстовое сообщение с кнопками навигации под графиком
     3. Редактирует ИСХОДНОЕ сообщение: убирает кнопку "📈 Получить анализ", добавляет "✅ Анализ сформирован..."
     """
     query = update.callback_query
     await query.answer()
-
+    
     data = query.data
     user_id = query.from_user.id
-
+    
     logger.info(f"[DATA_ANALYZE] Получен callback: {data} от user_id={user_id}")
-
+    
     # Парсим device_id, build_id и field_name из callback_data
     # Формат: data_analyze_{device_id}_{build_id}_{field_name}
     try:
@@ -994,10 +952,10 @@ async def handle_data_analyze(
         logger.error(f"[DATA_ANALYZE] Ошибка парсинга callback_data: {e}")
         await query.answer("⚠️ Ошибка: неверный формат данных", show_alert=True)
         return
-
+    
     db: Database = context.bot_data['db']
     chat_id = query.message.chat_id
-
+    
     # Проверяем принадлежность устройства пользователю
     device_human_name = None
     try:
@@ -1016,12 +974,12 @@ async def handle_data_analyze(
                 logger.debug(f"[DATA_ANALYZE] Устройство найдено: human_name='{device_human_name}'")
     except Exception as e:
         logger.error(f"[DATA_ANALYZE] Ошибка получения информации об устройстве: {e}")
-
+    
     if not device_human_name:
         logger.warning(f"[DATA_ANALYZE] Устройство не найдено у пользователя {user_id}")
         await query.answer("⚠️ Устройство не найдено", show_alert=True)
         return
-
+    
     # Генерируем график
     logger.info(f"[DATA_ANALYZE] Генерация графика для field_name='{field_name}'")
     try:
@@ -1031,9 +989,9 @@ async def handle_data_analyze(
         logger.error(f"[DATA_ANALYZE] Ошибка генерации графика: {e}")
         await query.answer(f"⚠️ Ошибка создания графика: {e}", show_alert=True)
         return
-
+    
     field_display = " ".join(word.capitalize() for word in field_name.split())
-
+    
     # 1️⃣ Отправляем НОВОЕ сообщение с ГРАФИКОМ
     logger.info(f"[DATA_ANALYZE] Отправка графика в чат {chat_id}")
     try:
@@ -1049,7 +1007,7 @@ async def handle_data_analyze(
         logger.error(f"[DATA_ANALYZE] Ошибка отправки графика: {e}")
         await query.answer(f"⚠️ Ошибка отправки графика: {e}", show_alert=True)
         return
-
+    
     # 2️⃣ Отправляем НОВОЕ текстовое сообщение с кнопками навигации под графиком
     logger.info(f"[DATA_ANALYZE] Отправка сообщения с кнопками навигации")
     nav_keyboard = [
@@ -1059,7 +1017,7 @@ async def handle_data_analyze(
         ]
     ]
     nav_markup = InlineKeyboardMarkup(nav_keyboard)
-
+    
     try:
         nav_message = await context.bot.send_message(
             chat_id=chat_id,
@@ -1071,13 +1029,13 @@ async def handle_data_analyze(
         logger.info(f"[DATA_ANALYZE] Сообщение с кнопками отправлено (message_id={nav_message.message_id})")
     except Exception as e:
         logger.error(f"[DATA_ANALYZE] Ошибка отправки сообщения с кнопками: {e}")
-
+    
     # 3️⃣ Редактируем ИСХОДНОЕ сообщение: убираем кнопку "📈 Получить анализ", добавляем подтверждение
     logger.info(f"[DATA_ANALYZE] Редактирование исходного сообщения")
     try:
         original_text = query.message.text
         confirm_text = original_text + "\n\n✅ Анализ сформирован и отправлен выше."
-
+        
         # Формируем клавиатуру без кнопки анализа
         keyboard_without_analyze = [
             [
@@ -1089,7 +1047,7 @@ async def handle_data_analyze(
             ]
         ]
         updated_markup = InlineKeyboardMarkup(keyboard_without_analyze)
-
+        
         await query.edit_message_text(
             text=confirm_text[:4096],
             reply_markup=updated_markup
@@ -1148,4 +1106,3 @@ def register_data_handlers(application) -> None:
     application.add_handler(
         CallbackQueryHandler(handle_data_analyze, pattern=r"^data_analyze_\d+_\d+_.+$")
     )
-
