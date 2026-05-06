@@ -1,4 +1,4 @@
-﻿"""
+"""
 Обработчики раздела "📊 Данные" для бота.
 Реализация пагинации списка устройств пользователя и выбора датчиков/полей.
 """
@@ -874,6 +874,29 @@ async def handle_data_export(
         await query.answer("⚠️ Устройство не найдено", show_alert=True)
         return
     
+    # Получаем human_name для текущего поля из post_fields
+    field_display = field_name.replace('_', ' ').title()
+    try:
+        with db.engine.connect() as conn:
+            result = conn.execute(
+                text('SELECT post_fields FROM builds WHERE id = :build_id'),
+                {'build_id': build_id}
+            )
+            row = result.fetchone()
+            if row and row[0]:
+                import json
+                post_fields = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+                if isinstance(post_fields, list):
+                    for item in post_fields:
+                        if isinstance(item, dict):
+                            if item.get('machine_name') == field_name or item.get('name') == field_name:
+                                human_name = item.get('human_name') or item.get('human')
+                                if human_name:
+                                    field_display = human_name
+                                break
+    except Exception as e:
+        logger.error(f'Ошибка получения human_name для поля: {e}')
+
     # Генерируем Excel-файл
     logger.info(f"[DATA_EXPORT] Генерация Excel-файла для field_name='{field_name}'")
     try:
@@ -1012,6 +1035,29 @@ async def handle_data_analyze(
         await query.answer("⚠️ Устройство не найдено", show_alert=True)
         return
     
+    # Получаем human_name для текущего поля из post_fields
+    field_display = field_name.replace('_', ' ').title()
+    try:
+        with db.engine.connect() as conn:
+            result = conn.execute(
+                text('SELECT post_fields FROM builds WHERE id = :build_id'),
+                {'build_id': build_id}
+            )
+            row = result.fetchone()
+            if row and row[0]:
+                import json
+                post_fields = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+                if isinstance(post_fields, list):
+                    for item in post_fields:
+                        if isinstance(item, dict):
+                            if item.get('machine_name') == field_name or item.get('name') == field_name:
+                                human_name = item.get('human_name') or item.get('human')
+                                if human_name:
+                                    field_display = human_name
+                                break
+    except Exception as e:
+        logger.error(f'Ошибка получения human_name для поля: {e}')
+
     # Генерируем график
     logger.info(f"[DATA_ANALYZE] Генерация графика для field_name='{field_name}'")
     try:
