@@ -433,25 +433,12 @@ async def show_device_info(query, context, device_service, device_id, user_id):
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        # Получаем последнее время данных из device_data
-        build_id = device['build_id']
-        last_data_time = "Неизвестно"
-        database = context.bot_data.get('database')
-        if database:
-            with database.engine.connect() as conn:
-                result = conn.execute(
-                    text("SELECT MAX(created_at) FROM device_data WHERE device_id = :device_id AND build_id = :build_id"),
-                    {"device_id": device_id, "build_id": build_id}
-                )   
-                row = result.fetchone()
-                if row and row[0]:
-                    last_data_time = row[0].strftime("%d.%m.%Y %H:%M:%S")
 
         message = f"📱 Информация об устройстве\n\n"
         message += f"Название: {device_name}\n"
         message += f"ID устройства: {device_id}\n"
         message += f"Сборка: {device['build_name']}\n"
-        message += f"Последние данные: {last_data_time}\n"
+        message += f"Последний раз онлайн: {device['last_seen'] or 'Неизвестно'}\n"
 
         await query.edit_message_text(message, reply_markup=reply_markup)
         
