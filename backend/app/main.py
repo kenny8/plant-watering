@@ -565,6 +565,9 @@ async def device_post_endpoint(machine_name: str, device_id: int, request: Reque
                 db.add(record)
         db.commit()
 
+        device.last_seen = datetime.datetime.now().isoformat()
+        db.commit()
+
         # Synchronously evaluate scenarios (immediately after data commit)
         logger.info("Starting scenario evaluation synchronously...")
         evaluate_device_scenarios(db, device_id, data)
