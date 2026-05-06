@@ -129,12 +129,12 @@ class NotificationService:
 
         # Отправляем каждое уведомление
         for row in rows:
-          notif_id, text, device_id, created_at = row
+          notif_id, notif_text, device_id, created_at = row
 
           try:
             await context.bot.send_message(
               chat_id=chat_id,
-              text=text,
+              text=notif_text,
               parse_mode='Markdown'
             )
             logger.info(f"Sent notification {notif_id} to user {user_id}")
