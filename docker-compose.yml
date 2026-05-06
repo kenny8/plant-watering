@@ -20,6 +20,9 @@ services:
     environment:
       - DATABASE_URL=mariadb+pymysql://user:m4Q8yrDETH@db:3306/plant_watering
       - JWT_SECRET=your_jwt_secret_key_here
+      - TZ=Europe/Moscow
+    volumes:
+      - /usr/share/zoneinfo/Europe/Moscow:/etc/localtime:ro
     depends_on:
       - db
     networks:
@@ -44,6 +47,9 @@ services:
     environment:
       - DATABASE_URL=mariadb+pymysql://user:m4Q8yrDETH@db:3306/plant_watering
       - LOG_LEVEL=DEBUG
+      - TZ=Europe/Moscow
+    volumes:
+      - /usr/share/zoneinfo/Europe/Moscow:/etc/localtime:ro
     depends_on:
       - db
     networks:
