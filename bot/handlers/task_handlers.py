@@ -22,6 +22,7 @@ logger = setup_logger(__name__)
 # Константы пагинации
 DEVICES_PER_PAGE = 5
 COMMANDS_PER_PAGE = 5
+SCENARIOS_PER_PAGE = 5
 
 
 def get_build_get_fields(database: Database, build_id: int) -> Optional[list[tuple[str, str]]]:
@@ -83,6 +84,49 @@ def get_build_get_fields(database: Database, build_id: int) -> Optional[list[tup
         return None
     except Exception as e:
         logger.error(f"Ошибка получения get_fields для build_id={build_id}: {e}", exc_info=True)
+        return None
+
+
+def get_build_scenarios(database: Database, device_id: int, build_id: int) -> Optional[list[tuple[int, str, str, bool]]]:
+    """
+    Получает сценарии для сборки с состоянием привязки к устройству.
+
+    Args:
+        database: Экземпляр Database
+        device_id: ID устройства
+        build_id: ID сборки
+
+    Returns:
+        Список кортежей: [(scenario_id, human_name, machine_name, is_enabled), ...]
+        или None если сценариев нет
+    """
+    try:
+        with database.engine.connect() as conn:
+            result = conn.execute(
+                text("""
+                SELECT
+                    s.id,
+                    s.human_name,
+                    s.machine_name,
+                    COALESCE(dss.is_enabled, FALSE) as is_enabled
+                FROM scenarios s
+                LEFT JOIN device_scenario_settings dss
+                    ON s.id = dss.scenario_id AND dss.device_id = :device_id
+                WHERE s.build_id = :build_id
+                ORDER BY s.human_name
+                """),
+                {"device_id": device_id, "build_id": build_id}
+            )
+            rows = result.fetchall()
+            if not rows:
+                logger.debug(f"Сценариев для build_id={build_id} нет")
+                return None
+
+            scenarios = [(row[0], row[1], row[2], bool(row[3])) for row in rows]
+            logger.info(f"Получено {len(scenarios)} сценариев для build_id={build_id}")
+            return scenarios
+    except Exception as e:
+        logger.error(f"Ошибка получения сценариев для build_id={build_id}: {e}", exc_info=True)
         return None
 
 
@@ -164,6 +208,90 @@ def build_commands_keyboard(
     keyboard.append([InlineKeyboardButton(
         text="🔙 Назад к устройствам",
         callback_data="task_list_p1"
+    )])
+
+    return InlineKeyboardMarkup(keyboard), total_pages
+
+
+def build_scenarios_keyboard(
+    device_id: int,
+    build_id: int,
+    scenarios: list[tuple[int, str, str, bool]],
+    page: int = 0
+) -> tuple[InlineKeyboardMarkup, int]:
+    """
+    Строит inline-клавиатуру с сценариями для указанной страницы.
+
+    Args:
+        device_id: ID устройства
+        build_id: ID сборки
+        scenarios: Список кортежей (scenario_id, human_name, machine_name, is_enabled)
+        page: Номер текущей страницы (0-indexed)
+
+    Returns:
+        Кортеж (клавиатура, общее_количество_страниц)
+    """
+    total_scenarios = len(scenarios)
+    total_pages = max(1, (total_scenarios + SCENARIOS_PER_PAGE - 1) // SCENARIOS_PER_PAGE)
+
+    # Нормализуем номер страницы
+    page = max(0, min(page, total_pages - 1))
+
+    start_idx = page * SCENARIOS_PER_PAGE
+    end_idx = min(start_idx + SCENARIOS_PER_PAGE, total_scenarios)
+    page_scenarios = scenarios[start_idx:end_idx]
+
+    keyboard: list[list[InlineKeyboardButton]] = []
+
+    # Кнопки сценариев - зеленый если включен, красный если выключен
+    for scenario_id, human_name, machine_name, is_enabled in page_scenarios:
+        emoji = "✅" if is_enabled else "❌"
+        callback_data = f"task_scenario_toggle_{device_id}_{build_id}_{scenario_id}"
+        keyboard.append([InlineKeyboardButton(
+            text=f"{emoji} {human_name}",
+            callback_data=callback_data
+        )])
+
+    # Кнопки навигации (если страниц больше 1)
+    if total_pages > 1:
+        nav_row: list[InlineKeyboardButton] = []
+
+        # Кнопка "Назад"
+        if page > 0:
+            nav_row.append(InlineKeyboardButton(
+                text="◀️",
+                callback_data=f"task_scenarios_{device_id}_{build_id}_p{page - 1}"
+            ))
+        else:
+            nav_row.append(InlineKeyboardButton(
+                text="·",
+                callback_data=f"task_scenarios_{device_id}_{build_id}_p0"
+            ))
+
+        # Индикатор страницы
+        nav_row.append(InlineKeyboardButton(
+            text=f"{page + 1}/{total_pages}",
+            callback_data="task_scenarios_page_info"
+        ))
+
+        # Кнопка "Вперёд"
+        if page < total_pages - 1:
+            nav_row.append(InlineKeyboardButton(
+                text="▶️",
+                callback_data=f"task_scenarios_{device_id}_{build_id}_p{page + 1}"
+            ))
+        else:
+            nav_row.append(InlineKeyboardButton(
+                text="·",
+                callback_data=f"task_scenarios_{device_id}_{build_id}_p{page}"
+            ))
+
+        keyboard.append(nav_row)
+
+    # Кнопка "Назад" к выбору типа работы
+    keyboard.append([InlineKeyboardButton(
+        text="🔙 Назад",
+        callback_data=f"task_dev_{device_id}_{build_id}"
     )])
 
     return InlineKeyboardMarkup(keyboard), total_pages
@@ -436,7 +564,7 @@ async def handle_task_device_select(
     header_text = f"📝 Устройство: {device_human_name}\n\nВыберите тип работы:"
     reply_markup = InlineKeyboardMarkup([
         [InlineKeyboardButton("🔄 Сценарии", callback_data=f"task_scenarios_{device_id}_{build_id}")],
-        [InlineKeyboardButton("🎚️ Ручное управление", callback_data=f"task_manual_{device_id}_{build_id}")],
+        [InlineKeyboardButton("👆 Ручное управление", callback_data=f"task_manual_{device_id}_{build_id}")],
         [InlineKeyboardButton("🔙 Назад к устройствам", callback_data="task_list_p1")]
     ])
 
@@ -448,12 +576,13 @@ async def handle_task_device_select(
     )
 
 
-async def handle_scenarios_stub(
+async def handle_scenarios_list(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
     """
-    Обработчик кнопки 'Сценарии' - заглушка.
-    В будущем здесь будет управление автоматическими сценариями.
+    Обработчик кнопки 'Сценарии'.
+    Показывает список сценариев сборки с пагинацией.
+    Кнопки: ✅ (включен) или ❌ (выключен) в зависимости от is_enabled в device_scenario_settings.
     """
     query = update.callback_query
     await query.answer()
@@ -461,13 +590,22 @@ async def handle_scenarios_stub(
     data = query.data
     user_id = query.from_user.id
 
-    logger.info(f"[TASK_SCENARIOS] Получен callback: {data} от user_id={user_id}")
+    logger.info(f"[TASK_SCENARIOS_LIST] Получен callback: {data} от user_id={user_id}")
 
-    # Парсим device_id и build_id
+    # Парсим device_id, build_id и опционально страницу
+    # Формат: task_scenarios_{device_id}_{build_id} или task_scenarios_{device_id}_{build_id}_p{page}
     try:
         parts = data.split('_')
         device_id = int(parts[2])
         build_id = int(parts[3])
+
+        # Проверяем есть ли страница в callback
+        if len(parts) > 4 and parts[4].startswith('p'):
+            page = int(parts[4].replace('p', ''))
+        else:
+            page = 0
+
+        logger.debug(f"Распарсены параметры: device_id={device_id}, build_id={build_id}, page={page}")
     except (ValueError, IndexError) as e:
         logger.error(f"Ошибка парсинга callback_data {data}: {e}")
         await query.answer("⚠️ Ошибка", show_alert=True)
@@ -495,17 +633,33 @@ async def handle_scenarios_stub(
     if not device_human_name:
         device_human_name = "Устройство"
 
-    # Заглушка для сценариев
-    header_text = f"🔄 Сценарии для: {device_human_name}\n\n"
-    header_text += "🚧 _Функционал автоматических сценариев в разработке._\n\n"
-    header_text += "Здесь вы сможете:\n"
-    header_text += "• Создавать и настраивать автоматические сценарии\n"
-    header_text += "• Настраивать условия срабатывания\n"
-    header_text += "• Просматривать историю выполненных сценариев"
+    # Получаем сценарии для сборки
+    scenarios = get_build_scenarios(db, device_id, build_id)
 
-    reply_markup = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔙 Назад", callback_data=f"task_dev_{device_id}_{build_id}")]
-    ])
+    if not scenarios:
+        header_text = f"🔄 Сценарии для: {device_human_name}\n\n"
+        header_text += "⚠️ _Нет сценариев для этой сборки._\n\n"
+        header_text += "Создайте сценарии в веб-интерфейсе чтобы управлять ими здесь."
+
+        reply_markup = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔙 Назад", callback_data=f"task_dev_{device_id}_{build_id}")]
+        ])
+
+        await query.edit_message_text(
+            text=header_text,
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
+        return
+
+    # Строим клавиатуру сценариев
+    header_text = f"🔄 Сценарии: {device_human_name}\n\n"
+    header_text += f"Нажмите на сценарий чтобы включить/выключить его.\n\n"
+    header_text += "✅ = Включено | ❌ = Выключено"
+
+    reply_markup, total_pages = build_scenarios_keyboard(device_id, build_id, scenarios, page=page)
+
+    logger.info(f"Показано {len(scenarios)} сценариев (страница {page + 1}/{total_pages})")
 
     await query.edit_message_text(
         text=header_text,
@@ -576,7 +730,7 @@ async def handle_task_manual_select(
     if not commands:
         # FALLBACK: если get_fields пуст/NULL
         logger.warning(f"Для build_id={build_id} нет GET-команд")
-        header_text = f"🎚️ Ручное управление: {device_human_name}\n\n⚠️ Для этого устройства GET-команды не настроены."
+        header_text = f"👆 Ручное управление: {device_human_name}\n\n⚠️ Для этого устройства GET-команды не настроены."
         reply_markup = InlineKeyboardMarkup([[
             InlineKeyboardButton(text="🔙 Назад", callback_data=f"task_dev_{device_id}_{build_id}")
         ]])
@@ -588,7 +742,7 @@ async def handle_task_manual_select(
         return
 
     # Формируем заголовок и клавиатуру с командами (первая страница)
-    header_text = f"🎚️ Ручное управление: {device_human_name}\nВыберите команду:"
+    header_text = f"👆 Ручное управление: {device_human_name}\nВыберите команду:"
     reply_markup, _ = build_commands_keyboard(device_id, build_id, commands, page=0)
 
     logger.info(f"Отправка списка команд ({len(commands)} шт.) для устройства {device_human_name}")
@@ -662,7 +816,7 @@ async def handle_commands_pagination(
     commands = get_build_get_fields(db, build_id)
 
     if not commands:
-        header_text = f"🎚️ Ручное управление: {device_human_name}\n\n⚠️ Для этого устройства GET-команды не настроены."
+        header_text = f"👆 Ручное управление: {device_human_name}\n\n⚠️ Для этого устройства GET-команды не настроены."
         reply_markup = InlineKeyboardMarkup([[
             InlineKeyboardButton(text="🔙 Назад", callback_data=f"task_dev_{device_id}_{build_id}")
         ]])
@@ -674,7 +828,7 @@ async def handle_commands_pagination(
         return
 
     # Строим клавиатуру для запрошенной страницы
-    header_text = f"🎚️ Ручное управление: {device_human_name}\nВыберите команду:"
+    header_text = f"👆 Ручное управление: {device_human_name}\nВыберите команду:"
     reply_markup, total_pages = build_commands_keyboard(device_id, build_id, commands, page=page)
 
     logger.debug(f"Пагинация команд: страница {page + 1}/{total_pages}")
@@ -684,6 +838,167 @@ async def handle_commands_pagination(
         reply_markup=reply_markup,
         parse_mode='Markdown'
     )
+
+
+async def handle_scenario_toggle(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """
+    Обработчик переключения состояния сценария.
+    callback_data: task_scenario_toggle_{device_id}_{build_id}_{scenario_id}
+
+    Переключает is_enabled в device_scenario_settings и возвращает к списку сценариев.
+    """
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data
+    user_id = query.from_user.id
+
+    logger.info(f"[TASK_SCENARIO_TOGGLE] Получен callback: {data} от user_id={user_id}")
+
+    # Парсим device_id, build_id, scenario_id
+    # Формат: task_scenario_toggle_{device_id}_{build_id}_{scenario_id}
+    try:
+        parts = data.split('_')
+        device_id = int(parts[3])
+        build_id = int(parts[4])
+        scenario_id = int(parts[5])
+        logger.debug(f"Распарсены параметры: device_id={device_id}, build_id={build_id}, scenario_id={scenario_id}")
+    except (ValueError, IndexError) as e:
+        logger.error(f"Ошибка парсинга callback_data {data}: {e}")
+        await query.answer("⚠️ Ошибка: неверный формат", show_alert=True)
+        return
+
+    db: Database = context.bot_data['db']
+
+    # Получаем имя устройства и название сценария
+    device_human_name = None
+    scenario_human_name = None
+    try:
+        with db.engine.connect() as conn:
+            # Имя устройства
+            result = conn.execute(
+                text("""
+                SELECT device_human_name
+                FROM user_devices
+                WHERE user_id = :user_id AND device_id = :device_id AND build_id = :build_id
+                """),
+                {"user_id": user_id, "device_id": device_id, "build_id": build_id}
+            )
+            row = result.fetchone()
+            if row:
+                device_human_name = row[0]
+
+            # Название сценария
+            result = conn.execute(
+                text("""
+                SELECT human_name
+                FROM scenarios
+                WHERE id = :scenario_id AND build_id = :build_id
+                """),
+                {"scenario_id": scenario_id, "build_id": build_id}
+            )
+            row = result.fetchone()
+            if row:
+                scenario_human_name = row[0]
+    except Exception as e:
+        logger.error(f"SQL ошибка при получении данных: {e}")
+        await query.answer("⚠️ Ошибка базы данных", show_alert=True)
+        return
+
+    if not device_human_name:
+        device_human_name = "Устройство"
+    if not scenario_human_name:
+        scenario_human_name = "Сценарий"
+
+    # Переключаем состояние сценария
+    try:
+        with db.engine.connect() as conn:
+            # Проверяем существует ли запись
+            result = conn.execute(
+                text("""
+                SELECT id, is_enabled
+                FROM device_scenario_settings
+                WHERE device_id = :device_id AND scenario_id = :scenario_id
+                """),
+                {"device_id": device_id, "scenario_id": scenario_id}
+            )
+            row = result.fetchone()
+
+            if row:
+                # Запись существует - переключаем состояние
+                new_state = not row[1]
+                conn.execute(
+                    text("""
+                    UPDATE device_scenario_settings
+                    SET is_enabled = :is_enabled
+                    WHERE device_id = :device_id AND scenario_id = :scenario_id
+                    """),
+                    {"is_enabled": new_state, "device_id": device_id, "scenario_id": scenario_id}
+                )
+                logger.info(f"Сценарий {scenario_id} переключен: {row[1]} -> {new_state}")
+            else:
+                # Записи нет - создаем с is_enabled = FALSE (выключено)
+                conn.execute(
+                    text("""
+                    INSERT INTO device_scenario_settings (device_id, scenario_id, is_enabled)
+                    VALUES (:device_id, :scenario_id, FALSE)
+                    """),
+                    {"device_id": device_id, "scenario_id": scenario_id}
+                )
+                new_state = False
+                logger.info(f"Создана запись для сценария {scenario_id} с is_enabled=FALSE")
+
+            conn.commit()
+
+            # Формируем сообщение о результате
+            if new_state:
+                status_text = "✅ включен!"
+            else:
+                status_text = "❌ выключен!"
+
+            success_text = f"{scenario_human_name}\n\n{status_text}"
+
+            await query.edit_message_text(
+                text=success_text,
+                parse_mode='Markdown'
+            )
+
+            # Сразу обновляем список сценариев
+            scenarios = get_build_scenarios(db, device_id, build_id)
+            if scenarios:
+                reply_markup, _ = build_scenarios_keyboard(device_id, build_id, scenarios, page=0)
+                header_text = f"🔄 Сценарии: {device_human_name}\n\n"
+                header_text += f"Нажмите на сценарий чтобы включить/выключить его.\n\n"
+                header_text += "✅ = Включено | ❌ = Выключено"
+
+                await query.edit_message_text(
+                    text=header_text,
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown'
+                )
+            else:
+                # Если сценариев нет, показываем сообщение
+                keyboard = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔙 Назад к выбору", callback_data=f"task_dev_{device_id}_{build_id}")]
+                ])
+                await query.edit_message_text(
+                    text="⚠️ Нет сценариев для этой сборки",
+                    reply_markup=keyboard,
+                    parse_mode='Markdown'
+                )
+
+    except Exception as e:
+        logger.error(f"Ошибка при переключении сценария: {e}", exc_info=True)
+        await query.answer("⚠️ Ошибка при изменении состояния", show_alert=True)
+        await query.edit_message_text(
+            text="⚠️ _Произошла ошибка при изменении состояния сценария._",
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 Назад", callback_data=f"task_scenarios_{device_id}_{build_id}")
+            ]])
+        )
 
 
 async def handle_task_command_select(
@@ -954,9 +1269,14 @@ def register_task_handlers(application) -> None:
         CallbackQueryHandler(handle_task_device_select, pattern=r"^task_dev_\d+_\d+$")
     )
 
-    # Обработчик сценариев (заглушка) - callback_data: task_scenarios_{device_id}_{build_id}
+    # Обработчик сценариев - callback_data: task_scenarios_{device_id}_{build_id}[_p{page}]
     application.add_handler(
-        CallbackQueryHandler(handle_scenarios_stub, pattern=r"^task_scenarios_\d+_\d+$")
+        CallbackQueryHandler(handle_scenarios_list, pattern=r"^task_scenarios_\d+_\d+(_p\d+)?$")
+    )
+
+    # Обработчик переключения сценария - callback_data: task_scenario_toggle_{device_id}_{build_id}_{scenario_id}
+    application.add_handler(
+        CallbackQueryHandler(handle_scenario_toggle, pattern=r"^task_scenario_toggle_\d+_\d+_\d+$")
     )
 
     # Обработчик ручного управления - callback_data: task_manual_{device_id}_{build_id}
