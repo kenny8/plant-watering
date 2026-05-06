@@ -113,6 +113,7 @@ def get_build_scenarios(database: Database, device_id: int, build_id: int) -> Op
                 LEFT JOIN device_scenario_settings dss
                     ON s.id = dss.scenario_id AND dss.device_id = :device_id
                 WHERE s.build_id = :build_id
+                  AND s.is_active = TRUE
                 ORDER BY s.human_name
                 """),
                 {"device_id": device_id, "build_id": build_id}
