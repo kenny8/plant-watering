@@ -293,7 +293,7 @@ async def handle_device_callback(update: Update, context: ContextTypes.DEFAULT_T
         elif callback_data.startswith('device_info_'):
             device_id = int(callback_data.split('_')[2])
             logger.info(f"🔄 Processing device_info callback for device {device_id}")
-            await show_device_info(query, device_service, device_id, user_id)
+            await show_device_info(query, context, device_service, device_id, user_id)
         
         elif callback_data.startswith('device_confirm_remove_'):
             device_id = int(callback_data.split('_')[3])
@@ -415,7 +415,7 @@ async def handle_device_callback(update: Update, context: ContextTypes.DEFAULT_T
         logger.error(f"❌ Error in handle_device_callback: {e}")
         await query.edit_message_text("❌ Произошла ошибка при обработке запроса")
 
-async def show_device_info(query, device_service, device_id, user_id):
+async def show_device_info(query, context, device_service, device_id, user_id):
     """Показывает информацию об устройстве"""
     try:
         user_devices = await device_service.get_user_devices(user_id)
@@ -436,7 +436,7 @@ async def show_device_info(query, device_service, device_id, user_id):
         # Получаем последнее время данных из device_data
         build_id = device['build_id']
         last_data_time = "Неизвестно"
-        database = query._context.bot_data.get('database')
+        database = context.bot_data.get('database')
         if database:
             with database.engine.connect() as conn:
                 result = conn.execute(
