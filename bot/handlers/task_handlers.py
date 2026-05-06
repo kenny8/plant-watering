@@ -1,4 +1,4 @@
-"""
+﻿"""
 Обработчики раздела "📝 Задачи" для бота.
 Реализация пагинации списка устройств пользователя и выбора задач.
 """
@@ -1081,9 +1081,9 @@ async def handle_task_command_select(
                                     for param in params:
                                         if isinstance(param, dict):
                                             param_human = param.get("human_name") or param.get("human") or param.get("name")
-                                            param_machine = param.get("machine_name") or param.get("machine") or param.get("value")
-                                            if param_human and param_machine:
-                                                command_params.append((param_machine, param_human))
+                                            result = param.get("result")
+                                            if param_human and result:
+                                                command_params.append((result, param_human))
                                 break
     except Exception as e:
         logger.error(f"SQL ошибка при получении данных команды: {e}", exc_info=True)
@@ -1298,3 +1298,4 @@ def register_task_handlers(application) -> None:
     application.add_handler(
         CallbackQueryHandler(handle_task_command_execution, pattern=r"^task_cmd_exec_\d+_\d+_.+_.+$")
     )
+
