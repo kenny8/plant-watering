@@ -156,11 +156,16 @@ class NotificationService:
     except Exception as e:
       logger.error(f"Error checking pending notifications: {e}", exc_info=True)
 
-  async def check_device_status(self, context: ContextTypes.DEFAULT_TYPE, device_service):
+  async def check_device_status(self, context: ContextTypes.DEFAULT_TYPE):
     """Проверяет статус устройств и отправляет уведомления (только если включены)"""
     try:
       notifications = []
       now = datetime.now()
+
+      device_service = context.bot_data.get('device_service')
+      if not device_service:
+        logger.error("device_service not found in bot_data")
+        return
 
       for chat_id, user_data in self.subscribed_users.items():
         user_id = user_data.get('user_id', chat_id)
@@ -208,7 +213,7 @@ class NotificationService:
     except Exception as e:
       logger.error(f"Error checking device status: {e}")
 
-  def start_monitoring(self, application, device_service, interval: int = 300):
+  def start_monitoring(self, application, interval: int = 300):
     """Запускает мониторинг устройств и проверку уведомлений"""
     if hasattr(application, 'job_queue'):
       device_job = application.job_queue.run_repeating(

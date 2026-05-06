@@ -237,7 +237,7 @@ class BotManager:
             logger.info("✅ Bot is now running and polling for messages")
 
             # Запускаем мониторинг уведомлений (проверка pending уведомлений каждые 60 сек)
-            notification_service.start_monitoring(self.application, device_service, interval=60)
+            notification_service.start_monitoring(self.application, interval=60)
 
             # Запускаем мониторинг токена
             await self.token_monitor.start_monitoring(
