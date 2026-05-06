@@ -300,25 +300,28 @@ async def handle_device_select(
                     post_fields_data = json.loads(post_fields_raw)
                     if isinstance(post_fields_data, list):
                         # Поддержка разных форматов: ["temp", {"name": "Humidity"}, {"key": "Press"}]
-                        for item in post_fields_data:
-                            if isinstance(item, str):
-                                fields.append(item)
-                            elif isinstance(item, dict):
-                                # Ищем ключи name, key, field_name
-                                field_human = item.get('human_name') or item.get('human') or item.get('name') or item.get('key') or item.get('field_name')
-                                if field_human:
-                                    fields.append(str(field_human))
+            # fields теперь список словарей: {"machine_name": "...", "human_display": "..."}
+            for item in post_fields_data:
+                if isinstance(item, str):
+                    machine_name = item
+                    human_display = item.replace("_", " ").title()
+                    fields.append({"machine_name": machine_name, "human_display": human_display})
+                elif isinstance(item, dict):
+                    machine_name = item.get("field_name") or item.get("name") or item.get("key")
+                    if machine_name:
+                        human_display = item.get("human_name") or item.get("human") or str(machine_name).replace("_", " ").title()
+                        fields.append({"machine_name": str(machine_name), "human_display": str(human_display)})
                     elif isinstance(post_fields_data, dict):
                         fields = list(post_fields_data.keys())
                 elif isinstance(post_fields_raw, list):
-                    for item in post_fields_raw:
-                        if isinstance(item, str):
-                            fields.append(item)
-                        elif isinstance(item, dict):
-                            field_human = item.get('human_name') or item.get('human') or item.get('name') or item.get('key') or item.get('field_name')
-                            if field_human:
-                                fields.append(str(field_human))
-                
+        for item in post_fields_raw:
+            if isinstance(item, str):
+                fields.append({"machine_name": item, "human_display": item.replace("_", " ").title()})
+            elif isinstance(item, dict):
+                machine_name = item.get("field_name") or item.get("name") or item.get("key")
+                if machine_name:
+                    human_display = item.get("human_name") or item.get("human") or str(machine_name).replace("_", " ").title()
+                    fields.append({"machine_name": str(machine_name), "human_display": str(human_display)})
                 logger.info(f"Извлечено {len(fields)} полей из builds.post_fields")
             else:
                 logger.debug(f"post_fields пуст или NULL для build_id={build_id}")
@@ -343,7 +346,7 @@ async def handle_device_select(
                     {"device_id": device_id, "build_id": build_id}
                 )
                 rows = result.fetchall()
-                fields = [row[0] for row in rows if row[0]]
+        fields = [{"machine_name": row[0], "human_display": row[0].replace("_", " ").title()} for row in rows if row[0]]
                 logger.info(f"Извлечено {len(fields)} полей из device_data.field_name")
         except Exception as e:
             logger.error(f"Ошибка получения полей из device_data: {e}")
@@ -374,7 +377,7 @@ async def handle_device_select(
 
 
 def build_fields_keyboard(
-    fields: list[str], device_id: int, build_id: int, page: int = 0
+    fields, device_id: int, build_id: int, page: int = 0
 ) -> tuple[InlineKeyboardMarkup, int]:
     """
     Строит inline-клавиатуру с полями (датчиками) для указанной страницы.
@@ -401,9 +404,16 @@ def build_fields_keyboard(
     keyboard: list[list[InlineKeyboardButton]] = []
     
     # Кнопки полей - callback_data: data_field_{device_id}_{build_id}_{field_name}
-    for field_name in page_fields:
+    for field in page_fields:
         # Экранируем специальные символы в callback_data
-        safe_field = field_name.replace(" ", "_").replace("-", "_").replace(".", "_")[:32]
+        if isinstance(field, str):
+            field_machine = field
+            field_display = field
+        else:
+            field_machine = field.get("machine_name", field.get("field_name", ""))
+            field_display = field.get("human_display", field_machine)
+        
+        safe_field = field_machine.replace(" ", "_").replace("-", "_").replace(".", "_")[:32]
         callback_data = f"data_field_{device_id}_{build_id}_{safe_field}"
         keyboard.append([InlineKeyboardButton(
             text=f"📈 {field_name}",
@@ -543,79 +553,14 @@ async def handle_fields_pagination(
                         elif isinstance(post_fields_data, dict):
                             fields = list(post_fields_data.keys())
                     elif isinstance(post_fields_raw, list):
-                        for item in post_fields_raw:
-                            if isinstance(item, str):
-                                fields.append(item)
-                            elif isinstance(item, dict):
-                                field_human = item.get('human_name') or item.get('human') or item.get('name') or item.get('key') or item.get('field_name')
-                                if field_human:
-                                    fields.append(str(field_human))
-        except json.JSONDecodeError as e:
-            logger.error(f"Ошибка парсинга JSON post_fields: {e}")
-        except Exception as e:
-            logger.error(f"Ошибка получения post_fields: {e}")
-    
-    # Fallback: device_data
-    if not fields:
-        try:
-            with db.engine.connect() as conn:
-                result = conn.execute(
-                    text("""
-                        SELECT DISTINCT field_name
-                        FROM device_data
-                        WHERE device_id = :device_id AND build_id = :build_id
-                        ORDER BY field_name
-                    """),
-                    {"device_id": device_id, "build_id": build_id}
-                )
-                rows = result.fetchall()
-                fields = [row[0] for row in rows if row[0]]
-        except Exception as e:
-            logger.error(f"Ошибка получения полей из device_data: {e}")
-    
-    header_text = f"📊 Данные: {device_human_name}\n\nВыберите датчик:"
-    
-    if not fields:
-        await query.edit_message_text(
-            text=header_text + "\n\n⚠️ _Нет доступных данных для этого устройства._",
-            parse_mode='Markdown',
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton(text="🔙 К списку устройств", callback_data="data_list_p0")
-            ]])
-        )
-        return
-    
-    reply_markup, total_pages = build_fields_keyboard(fields, device_id, build_id, page=page)
-    
-    logger.debug(f"Пагинация полей: страница {page + 1}/{total_pages}")
-    await query.edit_message_text(
-        text=header_text,
-        reply_markup=reply_markup,
-        parse_mode='Markdown'
-    )
-
-
-
-async def handle_field_select(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> None:
-    """
-    Обработчик выбора конкретного поля (датчика).
-    callback_data: data_field_{device_id}_{build_id}_{field_name}
-    
-    Этап 3: Вывод последних 20 показаний датчика.
-    - Заголовок: 📊 Показание: {field_name} (_ → пробелы, первая буква заглавная)
-    - Запрос в БД: SELECT field_value, created_at FROM device_data WHERE device_id=? AND build_id=? AND field_name=? ORDER BY created_at DESC LIMIT 20
-    - Формат: 🕒 {DD.MM.YYYY, HH:MM:SS} | 📏 {field_value}
-    - Лимит Telegram: 4096 символов, обрезка с предупреждением если превышено
-    - Кнопки: 🔙 Назад к датчикам, 🔙 Назад к устройствам
-    """
-    query = update.callback_query
-    await query.answer()
-
-    data = query.data
-    user_id = query.from_user.id
-
+        for item in post_fields_raw:
+            if isinstance(item, str):
+                fields.append({"machine_name": item, "human_display": item.replace("_", " ").title()})
+            elif isinstance(item, dict):
+                machine_name = item.get("field_name") or item.get("name") or item.get("key")
+                if machine_name:
+                    human_display = item.get("human_name") or item.get("human") or str(machine_name).replace("_", " ").title()
+                    fields.append({"machine_name": str(machine_name), "human_display": str(human_display)})
     logger.info(f"[FIELD_SELECT] Получен callback: {data} от user_id={user_id}")
 
     # Парсим device_id, build_id и field_name из callback_data
@@ -628,8 +573,9 @@ async def handle_field_select(
         remaining_parts = remaining.split('_', 1)
         build_id = int(remaining_parts[0])
         field_name_encoded = remaining_parts[1] if len(remaining_parts) > 1 else ""
-        # Восстанавливаем исходное имя поля (заменяем _ обратно на пробелы)
-        field_name = field_name_encoded.replace("_", " ")
+        # field_name_encoded это зашифрованное machine_name (заменяем _ обратно на пробелы только для отображения)
+        field_machine = field_name_encoded.replace("_", " ").lower().replace(" ", "_")  # Восстанавливаем machine_name
+        field_display = field_machine.replace("_", " ").title()  # Формируем display из machine_name
         logger.debug(f"Распарсены параметры: device_id={device_id}, build_id={build_id}, field_name='{field_name}'")
     except (ValueError, IndexError) as e:
         logger.error(f"Ошибка парсинга callback_data для поля: {e}")
@@ -677,9 +623,9 @@ async def handle_field_select(
                     FROM device_data 
                     WHERE device_id = :device_id 
                       AND build_id = :build_id 
-                      AND field_name = :field_name
+                      AND field_name = :field_machine
                 """),
-                {"device_id": device_id, "build_id": build_id, "field_name": field_name}
+                {"device_id": device_id, "build_id": build_id, "field_name": field_machine}
             )
             total_count = count_result.scalar() or 0
             logger.debug(f"Общее количество записей в БД (строго по device_id={device_id}, build_id={build_id}, field='{field_name}'): {total_count}")
@@ -691,11 +637,11 @@ async def handle_field_select(
                     FROM device_data 
                     WHERE device_id = :device_id 
                       AND build_id = :build_id 
-                      AND field_name = :field_name
+                      AND field_name = :field_machine
                     ORDER BY created_at DESC
                     LIMIT 20
                 """),
-                {"device_id": device_id, "build_id": build_id, "field_name": field_name}
+                {"device_id": device_id, "build_id": build_id, "field_name": field_machine}
             )
             rows = result.fetchall()
             readings = [(row[0], row[1]) for row in rows]
