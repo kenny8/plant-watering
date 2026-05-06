@@ -223,6 +223,8 @@ Web Browser → Nginx → Frontend Static → Backend API → Database
 | `handle_commands_pagination` | callback_query | pattern: `^task_cmd_\d+_\d+_p\d+$` | Пагинация списка GET-команд | InlineKeyboard: команды, ◀️, ▶️, 🔙 | Database → builds.get_fields, user_devices |
 | `handle_task_command_select` | callback_query | pattern: `^task_cmd_val_\d+_\d+_.+$` | Выбор команды, показ параметров из bot_parameters | InlineKeyboard: параметры команды (кнопки действий), 🔙 | Database → builds.get_fields, user_devices |
 | `handle_task_command_execution` | callback_query | pattern: `^task_cmd_exec_\d+_\d+_.+_.+$` | Выполнение команды — запись в БД (device_commands) | Подтверждение отправки команды | Database → INSERT INTO device_commands, user_devices |
+| `handle_scenarios_list` | callback_query | pattern: `^task_scenarios_\d+_\d+(_p\d+)?$` | Показ списка сценариев с пагинацией, фильтрация по is_active=TRUE | InlineKeyboard: ✅/❌ сценарии, пагинация | Database → scenarios, device_scenario_settings |
+| `handle_scenario_toggle` | callback_query | pattern: `^task_scenario_toggle_\d+_\d+_\d+$` | Переключение is_enabled сценария для устройства | Обновление списка сценариев | Database → UPDATE device_scenario_settings |
 
 ### 2.4 Кнопки
 
@@ -266,7 +268,67 @@ Web Browser → Nginx → Frontend Static → Backend API → Database
 | `◀️` | Inline | `data_list_p{page}` | Пагинация списка устройств (страница влево) | Нет |
 | `▶️` | Inline | `data_list_p{page}` | Пагинация списка устройств (страница вправо) | Нет |
 
-### 2.4.1 Навигация по разделу "Данные" (Data Flow)
+#### Inline-кнопки раздела "Задачи" (сценарии и команды)
+
+| Текст | Тип | Callback_data | Действие при нажатии | Изменяет состояние FSM? |
+|-------|-----|---------------|----------------------|-------------------------|
+| `🔄 Сценарии` | Inline | `task_scenarios_{device_id}_{build_id}[_p{page}]` | Показ списка активных сценариев с пагинацией | Нет |
+| `✅ {human_name}` | Inline | `task_scenario_toggle_{device_id}_{build_id}_{scenario_id}` | Включить сценарий (is_enabled=TRUE) | Нет |
+| `❌ {human_name}` | Inline | `task_scenario_toggle_{device_id}_{build_id}_{scenario_id}` | Выключить сценарий (is_enabled=FALSE) | Нет |
+| `👆 Ручное управление` | Inline | `task_manual_{device_id}_{build_id}` | Показ списка команд для ручного управления | Нет |
+
+### 2.4.1 Навигация по разделу "Задачи" (Data Flow)
+
+**Этап 1: Список устройств**
+```
+User → "📝 Задачи" → Список устройств (пагинация)
+Callback: task_list_p{page}
+Кнопки: 📱 {device_human_name}, ◀️, ▶️
+```
+
+**Этап 2: Выбор типа работы**
+```
+User → Клик по устройству → Выбор типа работы
+Callback: task_dev_{device_id}_{build_id}
+Кнопки: 
+  - 🔄 Сценарии
+  - 👆 Ручное управление
+  - 🔙 Назад к устройствам
+```
+
+**Этап 3: Управление сценариями**
+```
+User → 🔄 Сценарии → Список сценариев (пагинация)
+Callback: task_scenarios_{device_id}_{build_id}_[p{page}]
+Источник данных: scenarios WHERE build_id=X AND is_active=TRUE
+Кнопки:
+  - ✅ {human_name} (зеленый) — сценарий включен
+  - ❌ {human_name} (красный) — сценарий выключен
+  - ◀️, ▶️ — навигация по страницам (5 сценариев на страницу)
+  - 🔙 Назад — к выбору типа работы
+```
+
+**Этап 4: Переключение сценария**
+```
+User → Клик по ✅/❌ сценарию
+Callback: task_scenario_toggle_{device_id}_{build_id}_{scenario_id}
+Действие: 
+  - Проверяет запись в device_scenario_settings
+  - Если нет — создает с is_enabled=FALSE
+  - Если есть — переключает is_enabled = NOT is_enabled
+  - Автоматически обновляет список сценариев
+Фидбек: "Сценарий {human_name} включен/выключен"
+```
+
+**Этап 5: Ручное управление**
+```
+User → 👆 Ручное управление → Список команд (пагинация)
+Callback: task_manual_{device_id}_{build_id}
+Источник данных: builds.get_fields
+Дальше: выбор команды → выбор параметра → выполнение (как в старом формате)
+```
+
+### 2.4.2 Навигация по разделу "Данные" (Data Flow)
 
 **Этап 1: Список устройств**
 ```
@@ -338,6 +400,10 @@ user_states = {}  # user_id -> {'state': 'waiting_for_device_id'}
 ### 2.6 Middleware, фильтры, обработка ошибок
 
 **Middleware**: [TODO: не реализовано]
+
+**Периодические задачи (JobQueue)**:
+- Проверка уведомлений каждые 60 секунд
+- Мониторинг статуса устройств каждые 300 секунд
 
 **Фильтры**:
 - `filters.Text(["⚙️ Настройки", "📊 Данные", "📝 Задачи"])` — фильтр по тексту для Reply-кнопок главного меню
