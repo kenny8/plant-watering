@@ -941,9 +941,8 @@ async def handle_data_export(
     try:
         nav_message = await context.bot.send_message(
             chat_id=chat_id,
-            text=f"📁 **{filename}**\n\nВыберите действие:",
+            text=f"📁 {filename}\n\nВыберите действие:",
             reply_markup=nav_markup,
-            parse_mode='Markdown',
             reply_to_message_id=sent_doc.message_id
         )
         logger.info(f"[DATA_EXPORT] Сообщение с кнопками отправлено (message_id={nav_message.message_id})")
@@ -1098,9 +1097,8 @@ async def handle_data_analyze(
     try:
         nav_message = await context.bot.send_message(
             chat_id=chat_id,
-            text=f"📈 **Анализ: {field_display}**\n\nВыберите действие:",
+            text=f"📈 Анализ: {field_display}\n\nВыберите действие:",
             reply_markup=nav_markup,
-            parse_mode='Markdown',
             reply_to_message_id=sent_photo.message_id
         )
         logger.info(f"[DATA_ANALYZE] Сообщение с кнопками отправлено (message_id={nav_message.message_id})")
