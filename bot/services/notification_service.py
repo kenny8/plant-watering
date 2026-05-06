@@ -1,6 +1,5 @@
 import asyncio
 import logging
-from datetime import datetime, timedelta
 from typing import Dict, Any, List
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -157,61 +156,9 @@ class NotificationService:
       logger.error(f"Error checking pending notifications: {e}", exc_info=True)
 
   async def check_device_status(self, context: ContextTypes.DEFAULT_TYPE):
-    """Проверяет статус устройств и отправляет уведомления (только если включены)"""
-    try:
-      notifications = []
-      now = datetime.now()
-
-      device_service = context.bot_data.get('device_service')
-      if not device_service:
-        logger.error("device_service not found in bot_data")
-        return
-
-      for chat_id, user_data in self.subscribed_users.items():
-        user_id = user_data.get('user_id', chat_id)
-        if not await self.get_user_notification_status(user_id, chat_id):
-          continue
-
-        removed_devices = await device_service.check_device_removals(user_id)
-        for device in removed_devices:
-          notifications.append(
-            f"Device '{device['device_human_name'] or device['device_id']}' "
-            f"was removed from system"
-          )
-
-        user_devices = await device_service.get_user_devices(user_id)
-        for device in user_devices:
-          device_name = device['device_human_name']
-          # Определяем online/offline по last_seen (если за последние 5 минут - online)
-          last_seen_str = device.get('last_seen')
-          is_online = False
-          if last_seen_str:
-            try:
-              # Пробуем разные форматы даты
-              for fmt in ['%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S', '%Y-%m-%dT%H:%M:%S.%f']:
-                try:
-                  last_seen = datetime.strptime(last_seen_str[:19], fmt)
-                  is_online = (now - last_seen) < timedelta(minutes=5)
-                  break
-                except ValueError:
-                  continue
-            except Exception:
-              pass
-
-          if is_online:
-            notifications.append(
-              f"Device '{device_name}' is now online"
-            )
-          else:
-            notifications.append(
-              f"Device '{device_name}' is offline (last seen: {last_seen_str or 'unknown'})"
-            )
-
-      for notification in set(notifications):
-        await self.send_notification(context, notification)
-
-    except Exception as e:
-      logger.error(f"Error checking device status: {e}")
+    """Проверяет статус устройств (без отправки online/offline уведомлений)"""
+    # Убрали отправку device status уведомлений - только явные уведомления из сценариев
+    pass
 
   def start_monitoring(self, application, interval: int = 300):
     """Запускает мониторинг устройств и проверку уведомлений"""

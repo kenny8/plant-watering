@@ -424,13 +424,6 @@ def evaluate_visual_scenario(scenario, incoming_data: dict, device_id: int, buil
                     'value': command_value,
                     'target_device_id': device_id
                 })
-                notif = Notification(
-                    text=f"Scenario '{scenario.human_name}' triggered: {selected_field}={command_value}",
-                    status='pending',
-                    device_id=device_id,
-                    build_id=build.id
-                )
-                db.add(notif)
                 logger.info(f"Action triggered: {selected_field} <- {command_value}")
         elif node_type == 'notification':
             if input_vals and input_vals[0] is True:
