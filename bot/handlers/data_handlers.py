@@ -305,7 +305,7 @@ async def handle_device_select(
                                 fields.append({'machine': item, 'display': item.replace('_', ' ').title()})
                             elif isinstance(item, dict):
                                 # Ищем ключи name, key, field_name
-                                field_machine = item.get('name') or item.get('key') or item.get('field_name')
+                                field_machine = item.get('machine_name') or item.get('name') or item.get('key') or item.get('field_name')
                                 if field_machine:
                                     field_display = item.get("human_name") or item.get("human") or str(field_machine).replace("_", " ").title()
                                     fields.append({"machine": str(field_machine), "display": str(field_display)})
@@ -316,7 +316,7 @@ async def handle_device_select(
                         if isinstance(item, str):
                             fields.append({'machine': item, 'display': item.replace('_', ' ').title()})
                         elif isinstance(item, dict):
-                            field_machine = item.get('name') or item.get('key') or item.get('field_name')
+                            field_machine = item.get('machine_name') or item.get('name') or item.get('key') or item.get('field_name')
                             if field_machine:
                                 field_display = item.get("human_name") or item.get("human") or str(field_machine).replace("_", " ").title()
                                 fields.append({"machine": str(field_machine), "display": str(field_display)})
@@ -546,7 +546,7 @@ async def handle_fields_pagination(
                                 if isinstance(item, str):
                                     fields.append({'machine': item, 'display': item.replace('_', ' ').title()})
                                 elif isinstance(item, dict):
-                                    field_machine = item.get('name') or item.get('key') or item.get('field_name')
+                                    field_machine = item.get('machine_name') or item.get('name') or item.get('key') or item.get('field_name')
                                     if field_machine:
                                         field_display = item.get("human_name") or item.get("human") or str(field_machine).replace("_", " ").title()
                                         fields.append({"machine": str(field_machine), "display": str(field_display)})
@@ -557,7 +557,7 @@ async def handle_fields_pagination(
                             if isinstance(item, str):
                                 fields.append({'machine': item, 'display': item.replace('_', ' ').title()})
                             elif isinstance(item, dict):
-                                field_machine = item.get('name') or item.get('key') or item.get('field_name')
+                                field_machine = item.get('machine_name') or item.get('name') or item.get('key') or item.get('field_name')
                                 if field_machine:
                                     field_display = item.get("human_name") or item.get("human") or str(field_machine).replace("_", " ").title()
                                     fields.append({"machine": str(field_machine), "display": str(field_display)})
