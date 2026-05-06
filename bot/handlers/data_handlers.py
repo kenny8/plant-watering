@@ -668,11 +668,33 @@ async def handle_field_select(
     except Exception as e:
         logger.error(f"Ошибка получения имени устройства: {e}")
 
+    # Получаем human_name для текущего поля из post_fields
+    field_display = field_name.replace("_", " ").title()  # Fallback из machine_name
+    try:
+        with db.engine.connect() as conn:
+            result = conn.execute(
+                text("SELECT post_fields FROM builds WHERE id = :build_id"),
+                {"build_id": build_id}
+            )
+            row = result.fetchone()
+            if row and row[0]:
+                import json
+                post_fields = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+                if isinstance(post_fields, list):
+                    for item in post_fields:
+                        if isinstance(item, dict):
+                            if item.get("machine_name") == field_name or item.get("name") == field_name:
+                                human_name = item.get("human_name") or item.get("human")
+                                if human_name:
+                                    field_display = human_name
+                                    break
+    except Exception as e:
+        logger.error(f"Ошибка получения human_name для поля: {e}")
+
     display_name = device_human_name if device_human_name else f"Устройство #{device_id}"
 
     # Форматируем имя поля для заголовка: заменяем _ на пробелы, первую букву заглавной
     # Для каждого слова делаем первую букву заглавной
-    field_display = " ".join(word.capitalize() for word in field_name.split())
     logger.debug(f"Отображаемое имя поля: '{field_display}'")
 
     # Запрос в БД: последние 20 записей для device_id, build_id, field_name
@@ -865,7 +887,6 @@ async def handle_data_export(
     
     # Формируем имя файла
     filename = format_filename(field_name, device_id)
-    field_display = " ".join(word.capitalize() for word in field_name.split())
     
     # 1️⃣ Отправляем НОВОЕ сообщение с файлом
     logger.info(f"[DATA_EXPORT] Отправка файла {filename} в чат {chat_id}")
@@ -1001,7 +1022,6 @@ async def handle_data_analyze(
         await query.answer(f"⚠️ Ошибка создания графика: {e}", show_alert=True)
         return
     
-    field_display = " ".join(word.capitalize() for word in field_name.split())
     
     # 1️⃣ Отправляем НОВОЕ сообщение с ГРАФИКОМ
     logger.info(f"[DATA_ANALYZE] Отправка графика в чат {chat_id}")
