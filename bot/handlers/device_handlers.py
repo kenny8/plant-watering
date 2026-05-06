@@ -380,6 +380,30 @@ async def handle_device_callback(update: Update, context: ContextTypes.DEFAULT_T
         elif callback_data == "devices_list":
             logger.info("🔄 Processing devices_list callback")
             await devices_list_command(update, context)
+
+        elif callback_data == "back_to_devices_menu":
+            logger.info("Processing back_to_devices_menu callback")
+            if user_id in user_states:
+                del user_states[user_id]
+            keyboard = [
+                [InlineKeyboardButton("📋 Список устройств", callback_data="devices_list")],
+                [InlineKeyboardButton("➕ Добавить устройство", callback_data="add_device")],
+                [InlineKeyboardButton("🗑️ Удалить устройство", callback_data="remove_device")],
+                [InlineKeyboardButton("🔙 Назад", callback_data="menu_back_settings")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            devices_text = """
+📱 **Управление устройствами**
+
+Добавляйте и настраивайте ваши устройства для мониторинга:
+
+• 📋 **Список устройств** - просмотр всех ваших устройств
+• ➕ **Добавить устройство** - подключить новое устройство
+• 🗑️ **Удалить устройство** - убрать устройство из списка
+
+Выберите действие 👇
+            """
+            await query.edit_message_text(devices_text, reply_markup=reply_markup, parse_mode='Markdown')
             
         else:
             logger.warning(f"⚠️ Unknown callback_data: {callback_data}")
@@ -475,33 +499,6 @@ async def perform_device_removal(query, device_service, device_id, user_id):
     except Exception as e:
         logger.error(f"❌ Error in perform_device_removal: {e}")
         await query.edit_message_text("❌ Ошибка при удалении устройства")
-
-async def cancel_device_removal(query, device_service, user_id):
-    """Отмена удаления устройства"""
-    try:
-        logger.info(f"🔄 Cancelling device removal for user {user_id}")
-        
-        # Просто показываем сообщение об отмене
-        await query.edit_message_text("❌ Удаление отменено")
-        
-        # Ждем немного и возвращаем к списку устройств
-        await asyncio.sleep(1)
-        
-        # Создаем fake update для вызова remove_device_command
-        from telegram import Message
-        fake_message = Message(
-            message_id=query.message.message_id,
-            date=query.message.date,
-            chat=query.message.chat,
-            text="/remove_device"
-        )
-        fake_update = Update(update_id=query.message.message_id, message=fake_message)
-        
-        await remove_device_command(fake_update, query._context)
-        
-    except Exception as e:
-        logger.error(f"❌ Error in cancel_device_removal: {e}")
-        await query.edit_message_text("❌ Ошибка при отмене удаления")
 
 # Регистрируем обработчик текстовых сообщений для ввода ID устройства
 def register_handlers(application):
