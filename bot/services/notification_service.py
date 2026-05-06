@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import logging
 from typing import Dict, Any, List
 from telegram import Update
@@ -117,10 +117,9 @@ class NotificationService:
                         ON n.device_id = ud.device_id AND n.build_id = ud.build_id
                     WHERE n.status = 'pending'
                       AND ud.user_id = :user_id
-                      AND ud.chat_id = :chat_id
                     ORDER BY n.created_at ASC
                     """),
-                    {"user_id": user_id, "chat_id": chat_id}
+                    {"user_id": user_id}
                 )
                 rows = result.fetchall()
 
@@ -145,11 +144,11 @@ class NotificationService:
                         # Обновляем статус на 'sent'
                         conn.execute(
                             text("""
-                            UPDATENotifications
-                            SET status = 'sent', sent_at = :sent_at
+                            UPDATE notifications
+                            SET status = 'sent', sent_at = NOW()
                             WHERE id = :notif_id
                             """),
-                            {"sent_at": created_at, "notif_id": notif_id}
+                            {"notif_id": notif_id}
                         )
                         conn.commit()
 
@@ -219,3 +218,5 @@ class NotificationService:
                 await self.check_pending_notifications(context, user_id, chat_id)
         except Exception as e:
             logger.error(f"Error in periodic notification check: {e}")
+
+
