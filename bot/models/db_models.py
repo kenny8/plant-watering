@@ -16,17 +16,6 @@ class DeviceCommand(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
-class UserDevice(Base):
-    __tablename__ = "user_devices"
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(BigInteger, nullable=False)  # ← BIGINT для Telegram ID
-    device_id = Column(Integer, nullable=False)
-    build_id = Column(Integer, nullable=False)
-    device_human_name = Column(String(255))
-    created_at = Column(TIMESTAMP, server_default='CURRENT_TIMESTAMP')
-
-
 class UserSettings(Base):
     __tablename__ = "user_settings"
     
