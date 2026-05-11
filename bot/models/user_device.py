@@ -7,7 +7,7 @@ class UserDevice(Base):
     __tablename__ = "user_devices"
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    user_id = Column(BigInteger, ForeignKey('users.id'), nullable=False)
     device_id = Column(Integer, nullable=False)
     build_id = Column(Integer, nullable=False)
     device_human_name = Column(String(255))

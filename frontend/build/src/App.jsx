@@ -44,29 +44,45 @@ function AppContent() {
     // Можно добавить обновление состояния если нужно
   };
 
+  const renderContent = () => {
+    if (currentPath === '/devices') {
+      console.log('AppContent: Rendering Devices');
+      return React.createElement(window.Devices);
+    } else if (currentPath === '/settings') {
+      console.log('AppContent: Rendering Settings');
+      return React.createElement(window.Settings);
+    } else if (currentPath === '/assemblies') {
+      console.log('AppContent: Rendering Assemblies');
+      return React.createElement(window.Assemblies, { onEditBuild: handleEditBuild });
+    } else if (currentPath === '/scenarios') {
+      console.log('AppContent: Rendering ScenariosPage');
+      return React.createElement(window.ScenariosPage);
+    } else if (currentPath === '/scenarios/create' || currentPath.startsWith('/scenarios/edit/')) {
+      console.log('AppContent: Rendering ScenarioEditor');
+      const scenarioId = currentPath.startsWith('/scenarios/edit/') ? currentPath.split('/scenarios/edit/')[1] : null;
+      return React.createElement(window.ScenarioEditor, {
+        scenarioId: scenarioId,
+        onClose: () => {
+          window.history.pushState({}, '', '/');
+          window.dispatchEvent(new Event('popstate'));
+        }
+      });
+    } else if (currentPath.startsWith('/device-data')) {
+      console.log('AppContent: Rendering DeviceData');
+      return React.createElement(window.DeviceData);
+    } else if (currentPath.startsWith('/device-scenarios')) {
+      console.log('AppContent: Rendering DeviceScenariosPage');
+      return React.createElement(window.DeviceScenariosPage);
+    } else {
+      console.log('AppContent: Rendering Home');
+      return React.createElement(window.Home, { onAddAssembly: handleAddAssembly });
+    }
+  };
+
   if (!isAuthenticated) {
     console.log('AppContent: Rendering Login');
     return React.createElement(window.Login);
   }
-
-const renderContent = () => {
-  if (currentPath === '/devices') {
-    console.log('AppContent: Rendering Devices');
-    return React.createElement(window.Devices);
-  } else if (currentPath === '/settings') {
-    console.log('AppContent: Rendering Settings');
-    return React.createElement(window.Settings);
-  } else if (currentPath === '/assemblies') {
-    console.log('AppContent: Rendering Assemblies');
-    return React.createElement(window.Assemblies, { onEditBuild: handleEditBuild });
-  } else if (currentPath.startsWith('/device-data')) {
-    console.log('AppContent: Rendering DeviceData');
-    return React.createElement(window.DeviceData);
-  } else {
-    console.log('AppContent: Rendering Home');
-    return React.createElement(window.Home, { onAddAssembly: handleAddAssembly });
-  }
-};
 
   console.log('AppContent: isCreateBuildOpen:', isCreateBuildOpen);
   console.log('AppContent: editingBuild:', editingBuild);
@@ -101,12 +117,12 @@ function App() {
   const [isReady, setIsReady] = useState(false);
   const [timeoutReached, setTimeoutReached] = useState(false);
 
-useEffect(() => {
+  useEffect(() => {
   const startTime = Date.now();
   const checkDependencies = () => {
     if (window.Login && window.AuthContext && window.Navbar && window.Home && 
         window.Settings && window.Devices && window.CreateBuild && window.Assemblies && 
-        window.EditBuild && window.DeviceData) {  // Добавлен DeviceData
+        window.EditBuild && window.DeviceData && window.ScenariosPage && window.ScenarioEditor && window.DeviceScenariosPage) {
       console.log('App.jsx: All dependencies ready:', { 
         Login: window.Login, 
         AuthContext: window.AuthContext, 
@@ -117,7 +133,10 @@ useEffect(() => {
         CreateBuild: window.CreateBuild,
         Assemblies: window.Assemblies,
         EditBuild: window.EditBuild,
-        DeviceData: window.DeviceData  // Добавлен DeviceData
+        DeviceData: window.DeviceData,
+        ScenariosPage: window.ScenariosPage,
+        ScenarioEditor: window.ScenarioEditor,
+        DeviceScenariosPage: window.DeviceScenariosPage
       });
       setIsReady(true);
     } else if (Date.now() - startTime > 5000) {
@@ -131,7 +150,10 @@ useEffect(() => {
         CreateBuild: window.CreateBuild,
         Assemblies: window.Assemblies,
         EditBuild: window.EditBuild,
-        DeviceData: window.DeviceData  // Добавлен DeviceData
+        DeviceData: window.DeviceData,
+        ScenariosPage: window.ScenariosPage,
+        ScenarioEditor: window.ScenarioEditor,
+        DeviceScenariosPage: window.DeviceScenariosPage
       });
       setTimeoutReached(true);
     } else {

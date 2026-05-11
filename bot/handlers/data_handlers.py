@@ -302,22 +302,24 @@ async def handle_device_select(
                         # Поддержка разных форматов: ["temp", {"name": "Humidity"}, {"key": "Press"}]
                         for item in post_fields_data:
                             if isinstance(item, str):
-                                fields.append(item)
+                                fields.append({'machine': item, 'display': item.replace('_', ' ').title()})
                             elif isinstance(item, dict):
                                 # Ищем ключи name, key, field_name
-                                field_val = item.get('name') or item.get('key') or item.get('field_name')
-                                if field_val:
-                                    fields.append(str(field_val))
+                                field_machine = item.get('machine_name') or item.get('name') or item.get('key') or item.get('field_name')
+                                if field_machine:
+                                    field_display = item.get("human_name") or item.get("human") or str(field_machine).replace("_", " ").title()
+                                    fields.append({"machine": str(field_machine), "display": str(field_display)})
                     elif isinstance(post_fields_data, dict):
-                        fields = list(post_fields_data.keys())
+                        fields = [{'machine': k, 'display': k.replace('_', ' ').title()} for k in post_fields_data.keys()]
                 elif isinstance(post_fields_raw, list):
                     for item in post_fields_raw:
                         if isinstance(item, str):
-                            fields.append(item)
+                            fields.append({'machine': item, 'display': item.replace('_', ' ').title()})
                         elif isinstance(item, dict):
-                            field_val = item.get('name') or item.get('key') or item.get('field_name')
-                            if field_val:
-                                fields.append(str(field_val))
+                            field_machine = item.get('machine_name') or item.get('name') or item.get('key') or item.get('field_name')
+                            if field_machine:
+                                field_display = item.get("human_name") or item.get("human") or str(field_machine).replace("_", " ").title()
+                                fields.append({"machine": str(field_machine), "display": str(field_display)})
                 
                 logger.info(f"Извлечено {len(fields)} полей из builds.post_fields")
             else:
@@ -343,7 +345,7 @@ async def handle_device_select(
                     {"device_id": device_id, "build_id": build_id}
                 )
                 rows = result.fetchall()
-                fields = [row[0] for row in rows if row[0]]
+                fields = [{"machine": row[0], "display": row[0].replace("_", " ").title()} for row in rows if row[0]]
                 logger.info(f"Извлечено {len(fields)} полей из device_data.field_name")
         except Exception as e:
             logger.error(f"Ошибка получения полей из device_data: {e}")
@@ -374,13 +376,13 @@ async def handle_device_select(
 
 
 def build_fields_keyboard(
-    fields: list[str], device_id: int, build_id: int, page: int = 0
+    fields: list, device_id: int, build_id: int, page: int = 0
 ) -> tuple[InlineKeyboardMarkup, int]:
     """
     Строит inline-клавиатуру с полями (датчиками) для указанной страницы.
     
     Args:
-        fields: Список названий полей
+        fields: Список словарей с ключами 'machine' и 'display'
         device_id: ID устройства
         build_id: ID сборки
         page: Номер текущей страницы (0-indexed)
@@ -401,12 +403,19 @@ def build_fields_keyboard(
     keyboard: list[list[InlineKeyboardButton]] = []
     
     # Кнопки полей - callback_data: data_field_{device_id}_{build_id}_{field_name}
-    for field_name in page_fields:
-        # Экранируем специальные символы в callback_data
-        safe_field = field_name.replace(" ", "_").replace("-", "_").replace(".", "_")[:32]
+    for field in page_fields:
+        # field может быть строкой или словарем
+        if isinstance(field, dict):
+            field_machine = field.get("machine", "")
+            field_display = field.get("display", field_machine)
+        else:
+            field_machine = field
+            field_display = field
+        safe_field = field_machine.replace(" ", "_").replace("-", "_").replace(".", "_")[:32]
+
         callback_data = f"data_field_{device_id}_{build_id}_{safe_field}"
         keyboard.append([InlineKeyboardButton(
-            text=f"📈 {field_name}",
+            text=f"📈 {field_display}",
             callback_data=callback_data
         )])
     
@@ -535,21 +544,23 @@ async def handle_fields_pagination(
                         if isinstance(post_fields_data, list):
                             for item in post_fields_data:
                                 if isinstance(item, str):
-                                    fields.append(item)
+                                    fields.append({'machine': item, 'display': item.replace('_', ' ').title()})
                                 elif isinstance(item, dict):
-                                    field_val = item.get('name') or item.get('key') or item.get('field_name')
-                                    if field_val:
-                                        fields.append(str(field_val))
+                                    field_machine = item.get('machine_name') or item.get('name') or item.get('key') or item.get('field_name')
+                                    if field_machine:
+                                        field_display = item.get("human_name") or item.get("human") or str(field_machine).replace("_", " ").title()
+                                        fields.append({"machine": str(field_machine), "display": str(field_display)})
                         elif isinstance(post_fields_data, dict):
-                            fields = list(post_fields_data.keys())
+                            fields = [{'machine': k, 'display': k.replace('_', ' ').title()} for k in post_fields_data.keys()]
                     elif isinstance(post_fields_raw, list):
                         for item in post_fields_raw:
                             if isinstance(item, str):
-                                fields.append(item)
+                                fields.append({'machine': item, 'display': item.replace('_', ' ').title()})
                             elif isinstance(item, dict):
-                                field_val = item.get('name') or item.get('key') or item.get('field_name')
-                                if field_val:
-                                    fields.append(str(field_val))
+                                field_machine = item.get('machine_name') or item.get('name') or item.get('key') or item.get('field_name')
+                                if field_machine:
+                                    field_display = item.get("human_name") or item.get("human") or str(field_machine).replace("_", " ").title()
+                                    fields.append({"machine": str(field_machine), "display": str(field_display)})
         except json.JSONDecodeError as e:
             logger.error(f"Ошибка парсинга JSON post_fields: {e}")
         except Exception as e:
@@ -569,7 +580,7 @@ async def handle_fields_pagination(
                     {"device_id": device_id, "build_id": build_id}
                 )
                 rows = result.fetchall()
-                fields = [row[0] for row in rows if row[0]]
+                fields = [{"machine": row[0], "display": row[0].replace("_", " ").title()} for row in rows if row[0]]
         except Exception as e:
             logger.error(f"Ошибка получения полей из device_data: {e}")
     
@@ -657,11 +668,33 @@ async def handle_field_select(
     except Exception as e:
         logger.error(f"Ошибка получения имени устройства: {e}")
 
+    # Получаем human_name для текущего поля из post_fields
+    field_display = field_name.replace("_", " ").title()  # Fallback из machine_name
+    try:
+        with db.engine.connect() as conn:
+            result = conn.execute(
+                text("SELECT post_fields FROM builds WHERE id = :build_id"),
+                {"build_id": build_id}
+            )
+            row = result.fetchone()
+            if row and row[0]:
+                import json
+                post_fields = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+                if isinstance(post_fields, list):
+                    for item in post_fields:
+                        if isinstance(item, dict):
+                            if item.get("machine_name") == field_name or item.get("name") == field_name:
+                                human_name = item.get("human_name") or item.get("human")
+                                if human_name:
+                                    field_display = human_name
+                                    break
+    except Exception as e:
+        logger.error(f"Ошибка получения human_name для поля: {e}")
+
     display_name = device_human_name if device_human_name else f"Устройство #{device_id}"
 
     # Форматируем имя поля для заголовка: заменяем _ на пробелы, первую букву заглавной
     # Для каждого слова делаем первую букву заглавной
-    field_display = " ".join(word.capitalize() for word in field_name.split())
     logger.debug(f"Отображаемое имя поля: '{field_display}'")
 
     # Запрос в БД: последние 20 записей для device_id, build_id, field_name
@@ -841,6 +874,29 @@ async def handle_data_export(
         await query.answer("⚠️ Устройство не найдено", show_alert=True)
         return
     
+    # Получаем human_name для текущего поля из post_fields
+    field_display = field_name.replace('_', ' ').title()
+    try:
+        with db.engine.connect() as conn:
+            result = conn.execute(
+                text('SELECT post_fields FROM builds WHERE id = :build_id'),
+                {'build_id': build_id}
+            )
+            row = result.fetchone()
+            if row and row[0]:
+                import json
+                post_fields = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+                if isinstance(post_fields, list):
+                    for item in post_fields:
+                        if isinstance(item, dict):
+                            if item.get('machine_name') == field_name or item.get('name') == field_name:
+                                human_name = item.get('human_name') or item.get('human')
+                                if human_name:
+                                    field_display = human_name
+                                break
+    except Exception as e:
+        logger.error(f'Ошибка получения human_name для поля: {e}')
+
     # Генерируем Excel-файл
     logger.info(f"[DATA_EXPORT] Генерация Excel-файла для field_name='{field_name}'")
     try:
@@ -854,7 +910,6 @@ async def handle_data_export(
     
     # Формируем имя файла
     filename = format_filename(field_name, device_id)
-    field_display = " ".join(word.capitalize() for word in field_name.split())
     
     # 1️⃣ Отправляем НОВОЕ сообщение с файлом
     logger.info(f"[DATA_EXPORT] Отправка файла {filename} в чат {chat_id}")
@@ -886,9 +941,8 @@ async def handle_data_export(
     try:
         nav_message = await context.bot.send_message(
             chat_id=chat_id,
-            text=f"📁 **{filename}**\n\nВыберите действие:",
+            text=f"📁 {filename}\n\nВыберите действие:",
             reply_markup=nav_markup,
-            parse_mode='Markdown',
             reply_to_message_id=sent_doc.message_id
         )
         logger.info(f"[DATA_EXPORT] Сообщение с кнопками отправлено (message_id={nav_message.message_id})")
@@ -980,6 +1034,29 @@ async def handle_data_analyze(
         await query.answer("⚠️ Устройство не найдено", show_alert=True)
         return
     
+    # Получаем human_name для текущего поля из post_fields
+    field_display = field_name.replace('_', ' ').title()
+    try:
+        with db.engine.connect() as conn:
+            result = conn.execute(
+                text('SELECT post_fields FROM builds WHERE id = :build_id'),
+                {'build_id': build_id}
+            )
+            row = result.fetchone()
+            if row and row[0]:
+                import json
+                post_fields = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+                if isinstance(post_fields, list):
+                    for item in post_fields:
+                        if isinstance(item, dict):
+                            if item.get('machine_name') == field_name or item.get('name') == field_name:
+                                human_name = item.get('human_name') or item.get('human')
+                                if human_name:
+                                    field_display = human_name
+                                break
+    except Exception as e:
+        logger.error(f'Ошибка получения human_name для поля: {e}')
+
     # Генерируем график
     logger.info(f"[DATA_ANALYZE] Генерация графика для field_name='{field_name}'")
     try:
@@ -990,7 +1067,6 @@ async def handle_data_analyze(
         await query.answer(f"⚠️ Ошибка создания графика: {e}", show_alert=True)
         return
     
-    field_display = " ".join(word.capitalize() for word in field_name.split())
     
     # 1️⃣ Отправляем НОВОЕ сообщение с ГРАФИКОМ
     logger.info(f"[DATA_ANALYZE] Отправка графика в чат {chat_id}")
@@ -1021,9 +1097,8 @@ async def handle_data_analyze(
     try:
         nav_message = await context.bot.send_message(
             chat_id=chat_id,
-            text=f"📈 **Анализ: {field_display}**\n\nВыберите действие:",
+            text=f"📈 Анализ: {field_display}\n\nВыберите действие:",
             reply_markup=nav_markup,
-            parse_mode='Markdown',
             reply_to_message_id=sent_photo.message_id
         )
         logger.info(f"[DATA_ANALYZE] Сообщение с кнопками отправлено (message_id={nav_message.message_id})")

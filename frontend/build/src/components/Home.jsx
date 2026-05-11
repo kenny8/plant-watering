@@ -23,6 +23,12 @@ function Home({ onAddAssembly }) {
     }
   };
 
+  const handleCreateScenarioClick = () => {
+    console.log('Home.jsx: Create Scenario button clicked');
+    window.history.pushState({}, '', '/scenarios/create');
+    window.dispatchEvent(new Event('popstate'));
+  };
+
   return React.createElement(
     'div',
     { className: 'flex flex-col items-center justify-center min-h-screen bg-gray-100' },
@@ -38,7 +44,15 @@ function Home({ onAddAssembly }) {
         },
         'Добавить'
       ),
-      
+      React.createElement('h2', { className: 'text-2xl font-bold text-gray-700 mb-4 mt-8' }, 'Добавить сценарий'),
+      React.createElement(
+        'button',
+        {
+          onClick: handleCreateScenarioClick,
+          className: 'bg-indigo-600 text-white py-2 px-4 rounded hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500'
+        },
+        'Добавить'
+      )
     )
   );
 }

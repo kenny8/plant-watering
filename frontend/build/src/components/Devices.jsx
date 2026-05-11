@@ -72,6 +72,13 @@ function Devices() {
 	window.dispatchEvent(new PopStateEvent('popstate'));
   };
 
+  const handleViewScenarios = (device) => {
+    console.log(`Devices.jsx: View scenarios button clicked for device:`, device);
+    // Переходим на страницу сценариев устройства
+    window.history.pushState({}, '', `/device-scenarios/${device.id}`);
+    window.dispatchEvent(new Event('popstate'));
+  };
+
   return React.createElement(
     'div',
     { className: 'flex flex-col items-center min-h-screen bg-gray-100 py-8' },
@@ -91,8 +98,8 @@ function Devices() {
               React.createElement(
                 'tr',
                 null,
-                React.createElement('th', { className: 'py-3 px-4 text-left' }, 'ID устройства'),
-                React.createElement('th', { className: 'py-3 px-4 text-left' }, 'Человеческое имя'),
+                React.createElement('th', { className: 'py-3 px-4 text-left' }, 'ID'),
+                React.createElement('th', { className: 'py-3 px-4 text-left' }, 'Название'),
                 React.createElement('th', { className: 'py-3 px-4 text-left' }, 'Сборка'),
                 React.createElement('th', { className: 'py-3 px-4 text-left' }, 'Создано'),
                 React.createElement('th', { className: 'py-3 px-4 text-left' }, 'Действия')
@@ -121,6 +128,14 @@ function Devices() {
                         className: 'bg-green-600 text-white py-1 px-3 rounded hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm'
                       },
                       'Данные'
+                    ),
+                    React.createElement(
+                      'button',
+                      {
+                        onClick: () => handleViewScenarios(device),
+                        className: 'bg-purple-600 text-white py-1 px-3 rounded hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm'
+                      },
+                      'Сценарии'
                     ),
                     React.createElement(
                       'button',
