@@ -1,8 +1,9 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime
+from sqlalchemy import Column, Integer, BigInteger, String, Boolean, DateTime, TIMESTAMP
 from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
 
 Base = declarative_base()
+
 
 class DeviceCommand(Base):
     __tablename__ = "device_commands"
@@ -13,3 +14,25 @@ class DeviceCommand(Base):
     value = Column(String(255), nullable=False)
     is_executed = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class UserDevice(Base):
+    __tablename__ = "user_devices"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(BigInteger, nullable=False)  # ← BIGINT для Telegram ID
+    device_id = Column(Integer, nullable=False)
+    build_id = Column(Integer, nullable=False)
+    device_human_name = Column(String(255))
+    created_at = Column(TIMESTAMP, server_default='CURRENT_TIMESTAMP')
+
+
+class UserSettings(Base):
+    __tablename__ = "user_settings"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(BigInteger, nullable=False)  # ← BIGINT для Telegram ID
+    chat_id = Column(BigInteger, nullable=False)  # ← BIGINT для Telegram chat ID
+    notifications_enabled = Column(Boolean, default=True)
+    created_at = Column(TIMESTAMP, server_default='CURRENT_TIMESTAMP')
+    updated_at = Column(TIMESTAMP, onupdate='CURRENT_TIMESTAMP')
