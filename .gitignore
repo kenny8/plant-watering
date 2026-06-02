@@ -1,7 +1,4 @@
 ```
 # Build artifacts
-build/
-*.js
-*.jsx
-dist/
+frontend/build/
 ```
