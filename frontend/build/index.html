@@ -59,16 +59,18 @@
     /* Drawflow node styles - n8n style */
     .drawflow .drawflow-node {
       background: white;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+      border: 1px solid #cacaca;
+      -webkit-box-shadow: 0 2px 15px 2px #cacaca;
+      box-shadow: 0 2px 15px 2px #cacaca;
       padding: 0;
       min-width: 200px;
     }
     
     .drawflow .drawflow-node.selected {
-      border-color: #6366f1;
-      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+      background: white;
+      border: 1px solid #4ea9ff;
+      -webkit-box-shadow: 0 2px 20px 2px #4ea9ff;
+      box-shadow: 0 2px 20px 2px #4ea9ff;
     }
     
     .drawflow .drawflow-node:hover {
@@ -105,7 +107,7 @@
     }
     
     /* Node input/output points */
-    .drawflow .drawflow-node .input,
+    /*.drawflow .drawflow-node .input,
     .drawflow .drawflow-node .output {
       background: #6366f1;
       border: 2px solid white;
@@ -118,13 +120,33 @@
       background: #4f46e5;
       transform: scale(1.2);
     }
-    
+    */
+    .drawflow .drawflow-node .input, .drawflow .drawflow-node .output {
+      height: 15px;
+      width: 15px;
+      border: 2px solid #cacaca;
+    }
+
+    .drawflow .drawflow-node .input:hover, .drawflow .drawflow-node .output:hover {
+      background: #4ea9ff;
+    }
+
+    .drawflow .drawflow-node .output {
+      right: 7px;
+    }
+
+    .drawflow .drawflow-node .input {
+      left: -7px;
+      background: white;
+    }
     /* Custom node type styles */
     .drawflow .drawflow-node.condition,
     .drawflow .drawflow-node.dayofweek,
-    .drawflow .drawflow-node.time {
+    .drawflow .drawflow-node.time,
+    .drawflow .drawflow-node.data,
+    .drawflow .drawflow-node.action {
       background: white;
-      border: 1px solid #e2e8f0;
+      /*border: 1px solid #e2e8f0;*/
       border-radius: 8px;
       box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
       padding: 0;
@@ -144,6 +166,14 @@
       border-radius: 6px;
       padding: 8px;
       box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .drawflow-delete {
+      border: 2px solid #4ea9ff;
+      background: white;
+      color: #4ea9ff;
+      -webkit-box-shadow: 0 2px 20px 2px #4ea9ff;
+      box-shadow: 0 2px 20px 2px #4ea9ff;
     }
   </style>
 </head>

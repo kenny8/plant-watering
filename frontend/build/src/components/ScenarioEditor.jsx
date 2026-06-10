@@ -76,6 +76,51 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
               console.log('💾 Saved node state:', nodeId, nodesStateRef.current[nodeId]);
             }
             console.log('📊 Total nodes in storage:', Object.keys(nodesStateRef.current).length);
+            
+            // ДОБАВЛЯЕМ ОБРАБОТЧИКИ ДЛЯ SELECT ЭЛЕМЕНТОВ В НОДАХ
+            setTimeout(() => {
+              const nodeElement = document.querySelector(`[id^="node-${nodeId}"]`);
+              if (nodeElement) {
+                const dataSelect = nodeElement.querySelector('.data-field-select');
+                const actionSelect = nodeElement.querySelector('.action-field-select');
+                
+                if (dataSelect) {
+                  console.log('📡 Found data-field-select for node:', nodeId);
+                  dataSelect.addEventListener('change', (e) => {
+                    const selectedValue = e.target.value;
+                    const selectedOption = e.target.options[e.target.selectedIndex];
+                    console.log('📡 Data field changed:', { 
+                      machineName: selectedValue, 
+                      humanName: selectedOption.text,
+                      nodeId: nodeId 
+                    });
+                    // Сохраняем выбранное значение в данные узла
+                    if (moduleData && moduleData.data[nodeId]) {
+                      moduleData.data[nodeId].data.selected_field = selectedValue;
+                      nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
+                    }
+                  });
+                }
+                
+                if (actionSelect) {
+                  console.log('⚙️ Found action-field-select for node:', nodeId);
+                  actionSelect.addEventListener('change', (e) => {
+                    const selectedValue = e.target.value;
+                    const selectedOption = e.target.options[e.target.selectedIndex];
+                    console.log('⚙️ Action field changed:', { 
+                      machineName: selectedValue, 
+                      humanName: selectedOption.text,
+                      nodeId: nodeId 
+                    });
+                    // Сохраняем выбранное значение в данные узла
+                    if (moduleData && moduleData.data[nodeId]) {
+                      moduleData.data[nodeId].data.selected_field = selectedValue;
+                      nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
+                    }
+                  });
+                }
+              }
+            }, 100);
           });
           
           editor.on('nodeRemoved', (nodeId) => {
@@ -247,13 +292,22 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
       // Create Trigger nodes for post_fields (sensors)
       if (build.post_fields && Array.isArray(build.post_fields)) {
         build.post_fields.forEach((field, index) => {
+          // Логи для отладки структуры данных
+          console.log('📡 Post field data:', field);
+          
+          const humanName = field.human_name || field.name || 'Неизвестно';
+          const machineName = field.machine_name || field.field_name || `trigger_${index}`;
+          const fieldType = field.type || 'sensor';
+          const description = field.description || '';
+          
           const html = `
             <div class="drawflow_node_header bg-blue-500 text-white px-3 py-2 rounded-t-lg font-medium">
-              📡 ${field.name || field.field_name}
+              📡 ${humanName}
             </div>
             <div class="px-3 py-2 text-sm text-gray-600">
-              <div><strong>Type:</strong> ${field.type || 'sensor'}</div>
-              ${field.description ? `<div><strong>Desc:</strong> ${field.description}</div>` : ''}
+              <div><strong>Type:</strong> ${fieldType}</div>
+              ${description ? `<div><strong>Desc:</strong> ${description}</div>` : ''}
+              <div class="text-xs text-gray-400 mt-1"><em>${machineName}</em></div>
             </div>
           `;
           
@@ -263,7 +317,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
             1,
             xOffset,
             yOffset + (index * 180),
-            field.field_name || `trigger_${index}`,
+            machineName,
             {},
             html,
             false
@@ -275,14 +329,24 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
       // Create Action nodes for get_fields (commands)
       if (build.get_fields && Array.isArray(build.get_fields)) {
         build.get_fields.forEach((field, index) => {
+          // Логи для отладки структуры данных
+          console.log('⚙️ Get field data:', field);
+          
+          const humanName = field.human_name || field.name || 'Неизвестно';
+          const machineName = field.machine_name || field.field_name || `action_${index}`;
+          const fieldType = field.type || 'command';
+          const description = field.description || '';
+          
           let botParamsHtml = '';
-          if (field.bot_parameters) {
-            const params = Object.entries(field.bot_parameters).map(([key, value]) => {
-              const checked = value === true || value === 'on' ? 'checked' : '';
+          if (field.bot_parameters && Array.isArray(field.bot_parameters)) {
+            const params = field.bot_parameters.map((param, idx) => {
+              const paramHumanName = param.human_name || param.name || `param_${idx}`;
+              const paramMachineName = param.machine_name || `param_${idx}`;
               return `
                 <label class="flex items-center space-x-2 text-xs">
-                  <input type="checkbox" class="form-checkbox" ${checked} disabled />
-                  <span>${key}</span>
+                  <input type="checkbox" class="form-checkbox" />
+                  <span>${paramHumanName}</span>
+                  <span class="text-xs text-gray-400">(${paramMachineName})</span>
                 </label>
               `;
             }).join('');
@@ -291,12 +355,13 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
 
           const html = `
             <div class="drawflow_node_header bg-green-500 text-white px-3 py-2 rounded-t-lg font-medium">
-              ⚙️ ${field.name || field.field_name}
+              ⚙️ ${humanName}
             </div>
             <div class="px-3 py-2 text-sm text-gray-600">
-              <div><strong>Type:</strong> ${field.type || 'command'}</div>
-              ${field.description ? `<div><strong>Desc:</strong> ${field.description}</div>` : ''}
+              <div><strong>Type:</strong> ${fieldType}</div>
+              ${description ? `<div><strong>Desc:</strong> ${description}</div>` : ''}
               ${botParamsHtml}
+              <div class="text-xs text-gray-400 mt-1"><em>${machineName}</em></div>
             </div>
           `;
           
@@ -306,7 +371,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
             1,
             xOffset,
             yOffset + (index * 180),
-            field.field_name || `action_${index}`,
+            machineName,
             {},
             html,
             false
@@ -649,9 +714,13 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     const selectedBuild = builds.find(b => b.id == buildIdRef.current);
     const postFields = selectedBuild?.post_fields || [];
     
-    const fieldOptions = postFields.map((field, index) => 
-      `<option value="${field.field_name}">${field.name || field.field_name}</option>`
-    ).join('');
+    console.log('📡 Data node - Available post fields:', postFields);
+    
+    const fieldOptions = postFields.map((field, index) => {
+      const humanName = field.human_name || field.name || field.field_name || `Поле ${index + 1}`;
+      const machineName = field.machine_name || field.field_name || `field_${index}`;
+      return `<option value="${machineName}">${humanName}</option>`;
+    }).join('');
     
     const html = `
       <div class="drawflow_node_header bg-blue-500 text-white px-3 py-2 rounded-t-lg font-medium">
@@ -738,9 +807,23 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     const selectedBuild = builds.find(b => b.id == buildIdRef.current);
     const getFields = selectedBuild?.get_fields || [];
     
-    const fieldOptions = getFields.map((field, index) => 
-      `<option value="${field.field_name}">${field.name || field.field_name}</option>`
-    ).join('');
+    console.log('⚙️ Action node - Available get fields:', getFields);
+    
+    // Создаем мапу bot_parameters по machine_name для быстрого доступа
+    const botParamsMap = {};
+    getFields.forEach(field => {
+      const machineName = field.machine_name || field.field_name;
+      if (field.bot_parameters && Array.isArray(field.bot_parameters)) {
+        botParamsMap[machineName] = field.bot_parameters;
+        console.log(`📦 Bot parameters for ${machineName}:`, field.bot_parameters);
+      }
+    });
+    
+    const fieldOptions = getFields.map((field, index) => {
+      const humanName = field.human_name || field.name || field.field_name || `Команда ${index + 1}`;
+      const machineName = field.machine_name || field.field_name || `cmd_${index}`;
+      return `<option value="${machineName}" data-has-params="${!!field.bot_parameters}">${humanName}</option>`;
+    }).join('');
     
     const html = `
       <div class="drawflow_node_header bg-green-500 text-white px-3 py-2 rounded-t-lg font-medium">
@@ -754,7 +837,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
             ${fieldOptions}
           </select>
         </div>
-        <div class="bot-params-container mt-2 pt-2 border-t">
+        <div class="bot-params-container mt-2 pt-2 border-t" style="display:none;">
           <label class="block text-xs text-gray-600 mb-1">Параметры:</label>
           <div class="bot-params-list space-y-1"></div>
         </div>
@@ -762,7 +845,7 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
     `;
     
     try {
-      editor.addNode(
+      const nodeId = editor.addNode(
         'action',
         1,
         1,
@@ -773,7 +856,92 @@ function ScenarioEditorComponent({ scenarioId, onClose }) {
         html,
         false
       );
-      console.log('✓ Action node added successfully');
+      console.log('✓ Action node added successfully with ID:', nodeId);
+      
+      // Добавляем обработчик изменения select для динамического отображения параметров
+      setTimeout(() => {
+        const nodeElement = document.querySelector(`[id^="node-${nodeId}"]`);
+        if (nodeElement) {
+          const actionSelect = nodeElement.querySelector('.action-field-select');
+          const paramsContainer = nodeElement.querySelector('.bot-params-container');
+          const paramsList = nodeElement.querySelector('.bot-params-list');
+          
+          if (actionSelect && paramsContainer && paramsList) {
+            console.log('⚙️ Setting up action select handler for node:', nodeId);
+            
+            const updateParams = () => {
+              const selectedValue = actionSelect.value;
+              console.log('⚙️ Action selected:', selectedValue);
+              
+              // Сохраняем выбранное значение в данные узла
+              const moduleData = editor.drawflow[editor.module];
+              if (moduleData && moduleData.data[nodeId]) {
+                moduleData.data[nodeId].data.selected_field = selectedValue;
+                nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
+              }
+              
+              // Очищаем предыдущие параметры
+              paramsList.innerHTML = '';
+              
+              // Показываем/скрываем контейнер параметров
+              if (selectedValue && botParamsMap[selectedValue]) {
+                const params = botParamsMap[selectedValue];
+                console.log('⚙️ Showing parameters for', selectedValue, ':', params);
+                
+                params.forEach((param, idx) => {
+                  const paramHumanName = param.human_name || param.name || `Параметр ${idx + 1}`;
+                  const paramMachineName = param.machine_name || `param_${idx}`;
+                  const paramResult = param.result || '';
+                  
+                  const paramHtml = `
+                    <label class="flex items-center space-x-2 text-xs">
+                      <input type="checkbox" class="form-checkbox bot-param-check" 
+                             data-param-name="${paramMachineName}" 
+                             data-param-result="${paramResult}" />
+                      <span>${paramHumanName}</span>
+                      <span class="text-xs text-gray-400">(${paramMachineName})</span>
+                    </label>
+                  `;
+                  paramsList.insertAdjacentHTML('beforeend', paramHtml);
+                });
+                
+                paramsContainer.style.display = 'block';
+                
+                // Добавляем обработчики изменений для чекбоксов параметров
+                const checkboxes = paramsList.querySelectorAll('.bot-param-check');
+                checkboxes.forEach(cb => {
+                  cb.addEventListener('change', (e) => {
+                    const paramName = e.target.getAttribute('data-param-name');
+                    const paramResult = e.target.getAttribute('data-param-result');
+                    const isChecked = e.target.checked;
+                    console.log('⚙️ Parameter changed:', { paramName, paramResult, isChecked, nodeId });
+                    
+                    // Обновляем bot_parameters в данных узла
+                    if (moduleData && moduleData.data[nodeId]) {
+                      const currentParams = moduleData.data[nodeId].data.bot_parameters || {};
+                      if (isChecked) {
+                        currentParams[paramName] = paramResult;
+                      } else {
+                        delete currentParams[paramName];
+                      }
+                      moduleData.data[nodeId].data.bot_parameters = currentParams;
+                      nodesStateRef.current[nodeId] = JSON.parse(JSON.stringify(moduleData.data[nodeId]));
+                    }
+                  });
+                });
+              } else {
+                paramsContainer.style.display = 'none';
+                console.log('⚙️ No parameters for this action or no action selected');
+              }
+            };
+            
+            actionSelect.addEventListener('change', updateParams);
+            
+            // Вызываем один раз при инициализации (на случай если значение уже выбрано)
+            // updateParams();
+          }
+        }
+      }, 100);
     } catch (error) {
       console.error('✗ ERROR adding action node:', error);
     }
