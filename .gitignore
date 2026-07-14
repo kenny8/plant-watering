@@ -2,15 +2,21 @@
 # Build artifacts
 build/
 *.js
-*.jsx
-*.ts
-*.tsx
-*.css
-*.scss
-*.sass
-*.less
-*.min.js
-*.min.css
-dist/
-out/
+
+# Dependencies
+node_modules/
+
+# Editors
+.vscode/
+.idea/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Environment
+.env
+.env.local
+*.env.*
 ```

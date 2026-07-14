@@ -48,10 +48,30 @@ function ScenarioEditor({ scenarioId, onClose }) {
           editor.reroute = true;
           editor.reroute_fix_curvature = true;
           editor.node_selected = 'drawflow_node_selected';
+          
+          // Отключаем force_first_input для разрешения множественных соединений
+          editor.force_first_input = false;
+          
+          // Включаем режим перетаскивания узлов
+          editor.draggable_nodes = true;
 
           // 4. КРИТИЧЕСКИ ВАЖНО: сначала start(), потом всё остальное
           console.log('Calling editor.start()...');
           editor.start(); 
+          
+          // Добавляем обработчики событий для отладки
+          editor.on('nodeCreated', (nodeId) => {
+            console.log('Node created:', nodeId);
+          });
+          editor.on('nodeRemoved', (nodeId) => {
+            console.log('Node removed:', nodeId);
+          });
+          editor.on('connectionCreated', (connection) => {
+            console.log('Connection created:', connection);
+          });
+          editor.on('connectionRemoved', (connection) => {
+            console.log('Connection removed:', connection);
+          }); 
           
           console.log('✓ Drawflow editor started successfully!');
           console.log('Editor state after start:', {
@@ -108,8 +128,12 @@ function ScenarioEditor({ scenarioId, onClose }) {
       if (timer) clearTimeout(timer);
       if (editorRef.current) {
         console.log('Stopping editor...');
-        if (typeof editorRef.current.stop === 'function') {
-          editorRef.current.stop();
+        try {
+          if (typeof editorRef.current.stop === 'function') {
+            editorRef.current.stop();
+          }
+        } catch (e) {
+          console.error('Error stopping editor:', e);
         }
         editorRef.current = null;
       }
@@ -143,7 +167,23 @@ function ScenarioEditor({ scenarioId, onClose }) {
           editor.reroute = true;
           editor.reroute_fix_curvature = true;
           editor.node_selected = 'drawflow_node_selected';
+          editor.force_first_input = false;
+          editor.draggable_nodes = true;
           editor.start();
+          
+          // Добавляем обработчики событий для отладки
+          editor.on('nodeCreated', (nodeId) => {
+            console.log('Node created:', nodeId);
+          });
+          editor.on('nodeRemoved', (nodeId) => {
+            console.log('Node removed:', nodeId);
+          });
+          editor.on('connectionCreated', (connection) => {
+            console.log('Connection created:', connection);
+          });
+          editor.on('connectionRemoved', (connection) => {
+            console.log('Connection removed:', connection);
+          });
           
           editor.addModule('default', {});
           editor.changeModule('default');
@@ -166,11 +206,11 @@ function ScenarioEditor({ scenarioId, onClose }) {
     
     return () => clearTimeout(timer);
   }, [flowData]);
-
-  // Load build data and create nodes
+  
+  // Load build data and create nodes - ВАЖНО: не очищать узлы перед загрузкой
   useEffect(() => {
     if (buildId && editorRef.current) {
-      loadBuildAndCreateNodes(buildId);
+      loadBuildAndCreateNodes(buildId, false); // false = не очищать существующие узлы
     }
   }, [buildId]);
 
@@ -197,7 +237,7 @@ function ScenarioEditor({ scenarioId, onClose }) {
     }
   };
 
-  const loadBuildAndCreateNodes = async (id) => {
+  const loadBuildAndCreateNodes = async (id, clearExisting = true) => {
     try {
       const token = localStorage.getItem('token');
       const response = await axios.get(`/api/builds/${id}`, {
@@ -220,6 +260,24 @@ function ScenarioEditor({ scenarioId, onClose }) {
           console.error('Failed to initialize module in loadBuildAndCreateNodes:', moduleError);
           return;
         }
+      }
+      
+      // ВАЖНО: Если clearExisting = false, НЕ очищаем узлы - просто добавляем новые
+      // Это позволяет добавлять узлы без удаления уже созданных условий
+      if (clearExisting) {
+        console.log('Clearing existing nodes before loading build data...');
+        // Получаем все ID узлов и удаляем их через стандартный метод removeNode
+        const nodeIds = Object.keys(editor.nodes || {});
+        nodeIds.forEach(nodeId => {
+          try {
+            // Используем стандартный метод removeNode вместо removeNodeFromData
+            editor.removeNode(nodeId);
+          } catch (e) {
+            console.error('Error removing node:', e);
+          }
+        });
+      } else {
+        console.log('Preserving existing nodes (conditions, etc.) while adding build nodes...');
       }
       
       let yOffset = 50;
@@ -299,6 +357,12 @@ function ScenarioEditor({ scenarioId, onClose }) {
     }
   };
 
+  // Helper function to get all nodes from editor
+  const getAllNodes = (editor) => {
+    if (!editor || !editor.nodes) return [];
+    return Object.values(editor.nodes);
+  };
+
   const addConditionNode = () => {
     console.log('=== addConditionNode called ===');
     console.log('editorRef.current:', editorRef.current);
@@ -331,6 +395,13 @@ function ScenarioEditor({ scenarioId, onClose }) {
       }
     }
     
+    // Вычисляем позицию для новой ноды - справа от существующих
+    const existingNodes = getAllNodes(editor);
+    const maxX = existingNodes && existingNodes.length > 0 
+      ? Math.max(...existingNodes.map(n => n.pos_x)) 
+      : 300;
+    const newY = 50 + (existingNodes.length * 50); // Смещаем по Y для каждого нового условия
+    
     const html = `
       <div class="drawflow_node_header bg-orange-500 text-white px-3 py-2 rounded-t-lg font-medium">
         🔀 Условие
@@ -354,13 +425,13 @@ function ScenarioEditor({ scenarioId, onClose }) {
     
     // addNode принимает 9 аргументов: name, inputs, outputs, x, y, class, data, html, typenode
     try {
-      console.log('Calling editor.addNode with args:', ['condition', 1, 1, 400, 50, 'condition', { operator: '>', value: 0 }, html, false]);
+      console.log('Calling editor.addNode with args:', ['condition', 1, 1, maxX + 50, newY, 'condition', { operator: '>', value: 0 }, html, false]);
       editor.addNode(
         'condition',
         1,
-        1,
-        400,
-        50,
+        1, // 1 выход (как у остальных)
+        maxX + 50,
+        newY,
         'condition',
         { operator: '>', value: 0 },
         html,
@@ -410,6 +481,13 @@ function ScenarioEditor({ scenarioId, onClose }) {
       }
     }
     
+    // Вычисляем позицию для новой ноды - справа от существующих
+    const existingNodes = getAllNodes(editor);
+    const maxX = existingNodes && existingNodes.length > 0 
+      ? Math.max(...existingNodes.map(n => n.pos_x)) 
+      : 300;
+    const newY = 50 + (existingNodes.length * 50);
+    
     const days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
     const checkboxes = days.map((day, index) => `
       <label class="flex items-center space-x-1 text-xs">
@@ -429,13 +507,13 @@ function ScenarioEditor({ scenarioId, onClose }) {
     
     // addNode принимает 9 аргументов: name, inputs, outputs, x, y, class, data, html, typenode
     try {
-      console.log('Calling editor.addNode with args:', ['dayofweek', 1, 1, 400, 250, 'dayofweek', { days: [] }, html, false]);
+      console.log('Calling editor.addNode with args:', ['dayofweek', 1, 1, maxX + 50, newY, 'dayofweek', { days: [] }, html, false]);
       editor.addNode(
         'dayofweek',
         1,
         1,
-        400,
-        250,
+        maxX + 50,
+        newY,
         'dayofweek',
         { days: [] },
         html,
@@ -485,6 +563,13 @@ function ScenarioEditor({ scenarioId, onClose }) {
       }
     }
     
+    // Вычисляем позицию для новой ноды - справа от существующих
+    const existingNodes = getAllNodes(editor);
+    const maxX = existingNodes && existingNodes.length > 0 
+      ? Math.max(...existingNodes.map(n => n.pos_x)) 
+      : 300;
+    const newY = 50 + (existingNodes.length * 50);
+    
     const html = `
       <div class="drawflow_node_header bg-orange-500 text-white px-3 py-2 rounded-t-lg font-medium">
         🕐 Время
@@ -496,13 +581,13 @@ function ScenarioEditor({ scenarioId, onClose }) {
     
     // addNode принимает 9 аргументов: name, inputs, outputs, x, y, class, data, html, typenode
     try {
-      console.log('Calling editor.addNode with args:', ['time', 1, 1, 400, 400, 'time', { time: '' }, html, false]);
+      console.log('Calling editor.addNode with args:', ['time', 1, 1, maxX + 50, newY, 'time', { time: '' }, html, false]);
       editor.addNode(
         'time',
         1,
         1,
-        400,
-        400,
+        maxX + 50,
+        newY,
         'time',
         { time: '' },
         html,
@@ -517,6 +602,156 @@ function ScenarioEditor({ scenarioId, onClose }) {
         name: error.name,
         stack: error.stack
       });
+    }
+  };
+
+  // Функция для добавления ноды данных (Trigger из post_fields)
+  const addDataNode = () => {
+    console.log('=== addDataNode called ===');
+    
+    if (!editorRef.current) {
+      console.error('ERROR: Editor not initialized yet! editorRef.current is null');
+      return;
+    }
+    
+    const editor = editorRef.current;
+    
+    // Проверка модуля перед добавлением узла
+    if (!editor.module || !editor.version) {
+      console.error('ERROR: Module not initialized! Trying to initialize now...');
+      try {
+        editor.addModule('default', {});
+        editor.changeModule('default');
+        console.log('Module initialized on-the-fly:', editor.module);
+      } catch (moduleError) {
+        console.error('Failed to initialize module:', moduleError);
+        alert('Ошибка инициализации Drawflow. Пожалуйста, обновите страницу.');
+        return;
+      }
+    }
+    
+    // Вычисляем позицию для новой ноды - справа от существующих
+    const existingNodes = getAllNodes(editor);
+    const maxX = existingNodes && existingNodes.length > 0 
+      ? Math.max(...existingNodes.map(n => n.pos_x)) 
+      : 300;
+    const newY = 50 + (existingNodes.length * 50);
+    
+    // Получаем список доступных полей из выбранной сборки
+    const selectedBuild = builds.find(b => b.id == buildId);
+    const postFields = selectedBuild?.post_fields || [];
+    
+    const fieldOptions = postFields.map((field, index) => 
+      `<option value="${field.field_name}">${field.name || field.field_name}</option>`
+    ).join('');
+    
+    const html = `
+      <div class="drawflow_node_header bg-blue-500 text-white px-3 py-2 rounded-t-lg font-medium">
+        📡 Данные (POST)
+      </div>
+      <div class="px-3 py-2 text-sm">
+        <div class="mb-2">
+          <label class="block text-xs text-gray-600 mb-1">Поле:</label>
+          <select class="w-full px-2 py-1 border rounded text-xs data-field-select">
+            <option value="">Выберите поле</option>
+            ${fieldOptions}
+          </select>
+        </div>
+      </div>
+    `;
+    
+    try {
+      editor.addNode(
+        'data',
+        1,
+        1,
+        maxX + 50,
+        newY,
+        'data',
+        { field_name: '', type: 'post' },
+        html,
+        false
+      );
+      console.log('✓ Data node added successfully');
+    } catch (error) {
+      console.error('✗ ERROR adding data node:', error);
+    }
+  };
+
+  // Функция для добавления ноды действия (Action из get_fields)
+  const addActionNode = () => {
+    console.log('=== addActionNode called ===');
+    
+    if (!editorRef.current) {
+      console.error('ERROR: Editor not initialized yet! editorRef.current is null');
+      return;
+    }
+    
+    const editor = editorRef.current;
+    
+    // Проверка модуля перед добавлением узла
+    if (!editor.module || !editor.version) {
+      console.error('ERROR: Module not initialized! Trying to initialize now...');
+      try {
+        editor.addModule('default', {});
+        editor.changeModule('default');
+        console.log('Module initialized on-the-fly:', editor.module);
+      } catch (moduleError) {
+        console.error('Failed to initialize module:', moduleError);
+        alert('Ошибка инициализации Drawflow. Пожалуйста, обновите страницу.');
+        return;
+      }
+    }
+    
+    // Вычисляем позицию для новой ноды - справа от существующих
+    const existingNodes = getAllNodes(editor);
+    const maxX = existingNodes && existingNodes.length > 0 
+      ? Math.max(...existingNodes.map(n => n.pos_x)) 
+      : 300;
+    const newY = 50 + (existingNodes.length * 50);
+    
+    // Получаем список доступных полей из выбранной сборки
+    const selectedBuild = builds.find(b => b.id == buildId);
+    const getFields = selectedBuild?.get_fields || [];
+    
+    const fieldOptions = getFields.map((field, index) => 
+      `<option value="${field.field_name}">${field.name || field.field_name}</option>`
+    ).join('');
+    
+    const html = `
+      <div class="drawflow_node_header bg-green-500 text-white px-3 py-2 rounded-t-lg font-medium">
+        ⚙️ Действие (GET)
+      </div>
+      <div class="px-3 py-2 text-sm">
+        <div class="mb-2">
+          <label class="block text-xs text-gray-600 mb-1">Команда:</label>
+          <select class="w-full px-2 py-1 border rounded text-xs action-field-select">
+            <option value="">Выберите команду</option>
+            ${fieldOptions}
+          </select>
+        </div>
+        <div class="bot-params-container mt-2 pt-2 border-t">
+          <label class="block text-xs text-gray-600 mb-1">Параметры:</label>
+          <div class="bot-params-list space-y-1"></div>
+        </div>
+      </div>
+    `;
+    
+    try {
+      editor.addNode(
+        'action',
+        1,
+        1,
+        maxX + 50,
+        newY,
+        'action',
+        { field_name: '', type: 'get', bot_parameters: {} },
+        html,
+        false
+      );
+      console.log('✓ Action node added successfully');
+    } catch (error) {
+      console.error('✗ ERROR adding action node:', error);
     }
   };
 
@@ -706,6 +941,30 @@ function ScenarioEditor({ scenarioId, onClose }) {
           React.createElement(
             'div',
             { className: 'flex space-x-2' },
+            React.createElement(
+              'button',
+              {
+                type: 'button',
+                onClick: () => {
+                  console.log('Data button clicked, editor:', editorRef.current);
+                  addDataNode();
+                },
+                className: 'px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 focus:outline-none'
+              },
+              '+ Данные'
+            ),
+            React.createElement(
+              'button',
+              {
+                type: 'button',
+                onClick: () => {
+                  console.log('Action button clicked, editor:', editorRef.current);
+                  addActionNode();
+                },
+                className: 'px-3 py-1 bg-green-500 text-white text-sm rounded hover:bg-green-600 focus:outline-none'
+              },
+              '+ Действия'
+            ),
             React.createElement(
               'button',
               {
